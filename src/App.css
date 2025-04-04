@@ -1,2 +1,32 @@
 @import "tailwindcss";
 
+/* Add basic styles if not using Tailwind or for overrides */
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Add Tailwind directives if using Tailwind in index.css or App.css */
+/*
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+*/
+
+/* Ensure main content takes up space */
+main {
+ display: flex;
+ flex-direction: column;
+ min-height: calc(100vh - 4rem); /* Adjust 4rem based on navbar height */
+}
+
+footer {
+  margin-top: auto; /* Pushes footer to the bottom */
+}
+
+/* Add any other custom styles here */
+

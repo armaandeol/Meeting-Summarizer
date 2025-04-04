@@ -1,224 +1,179 @@
-import { useState, useRef, useEffect } from 'react'
-import { createClient, LiveTranscriptionEvents } from '@deepgram/sdk';
-import './App.css'
+import { useState, useRef, useEffect, useCallback } from 'react';
+import './App.css';
+
+// --- IMPORTANT ---
+// Replace this with your actual Deepgram API Key.
+// In a real application, use environment variables (e.g., import.meta.env.VITE_DEEPGRAM_API_KEY)
+const DEEPGRAM_API_KEY = '16dcb20c07a4be54791de06f5059e9c412284862';
+// --- IMPORTANT ---
 
 function App() {
   console.log("App component rendering");
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState('');
-  const deepgramConnectionRef = useRef(null);
+  const [connectionStatus, setConnectionStatus] = useState('Not Connected');
+
+  // Refs for managing resources
+  const socketRef = useRef(null);
   const mediaRecorderRef = useRef(null);
-  const audioContextRef = useRef(null);
+  const streamRef = useRef(null);
 
-  // Log state changes
-  useEffect(() => {
-    console.log("isRecording state changed:", isRecording);
-  }, [isRecording]);
+  // --- Cleanup Function ---
+  const cleanupResources = useCallback(() => {
+    console.log("Cleaning up resources...");
 
-  useEffect(() => {
-    console.log("transcript state changed:", transcript);
-  }, [transcript]);
-
-  const startRecording = async () => {
-    console.log("startRecording function called");
-    try {
-      console.log("Requesting microphone access...");
-      // Get user media stream
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        } 
-      });
-      console.log("Microphone access granted:", stream);
-      
-      // Initialize Deepgram client
-      console.log("Initializing Deepgram client...");
-      const deepgram = createClient('16dcb20c07a4be54791de06f5059e9c412284862');
-      console.log("Deepgram client created:", deepgram);
-      
-      // Create a live transcription connection
-      console.log("Creating live transcription connection...");
-      const connection = deepgram.listen.live({
-        model: 'nova-2',
-        language: 'en-US',
-        punctuate: true,
-        smart_format: true,
-      });
-      console.log("Live transcription connection created");
-      
-      deepgramConnectionRef.current = connection;
-      
-      // Set up event listeners for the connection
-      console.log("Setting up Deepgram event listeners");
-      
-      connection.on(LiveTranscriptionEvents.Open, () => {
-        console.log("Deepgram connection opened successfully");
-        setIsRecording(true);
-        
-        // Set up audio context for processing microphone input
-        console.log("Setting up AudioContext...");
-        const audioContext = new AudioContext();
-        console.log("AudioContext created:", audioContext);
-        audioContextRef.current = audioContext;
-        
-        const source = audioContext.createMediaStreamSource(stream);
-        console.log("MediaStreamSource created:", source);
-        
-        const processor = audioContext.createScriptProcessor(4096, 1, 1);
-        console.log("ScriptProcessor created:", processor);
-        
-        source.connect(processor);
-        processor.connect(audioContext.destination);
-        console.log("Audio processing pipeline connected");
-        
-        processor.onaudioprocess = (e) => {
-          // Get audio data from input channel
-          const inputData = e.inputBuffer.getChannelData(0);
-          
-          // Log audio data periodically (not every frame to avoid console spam)
-          if (Math.random() < 0.01) {  // Log approximately 1% of audio frames
-            console.log("Audio processing event. Buffer size:", inputData.length, "Sample values:", inputData[0], inputData[1], "...");
-            console.log("Audio level:", calculateAudioLevel(inputData));
-          }
-          
-          // Convert float32 to int16 (what Deepgram expects)
-          const convertedData = new Int16Array(inputData.length);
-          for (let i = 0; i < inputData.length; i++) {
-            // Convert Float32 to Int16
-            convertedData[i] = inputData[i] * 32767;
-          }
-          
-          // Send audio data to Deepgram
-          try {
-            connection.send(convertedData.buffer);
-            if (Math.random() < 0.01) {  // Log occasionally to avoid spam
-              console.log("Sent audio data to Deepgram, buffer size:", convertedData.buffer.byteLength);
-            }
-          } catch (error) {
-            console.error("Error sending audio data to Deepgram:", error);
-          }
-        };
-        
-        mediaRecorderRef.current = { 
-          stream,
-          processor,
-          source
-        };
-      });
-      
-      connection.on(LiveTranscriptionEvents.Close, (event) => {
-        console.log("Deepgram connection closed", event);
-        stopRecording();
-      });
-      
-      connection.on(LiveTranscriptionEvents.Transcript, (data) => {
-        console.log("Transcript received from Deepgram:", JSON.stringify(data));
-        
-        if (data.channel && 
-            data.channel.alternatives && 
-            data.channel.alternatives.length > 0) {
-          const receivedTranscript = data.channel.alternatives[0].transcript;
-          console.log("Extracted transcript text:", receivedTranscript);
-          
-          if (receivedTranscript && receivedTranscript.trim() !== '') {
-            console.log("Adding text to transcript state:", receivedTranscript);
-            setTranscript(prev => {
-              const newTranscript = prev + ' ' + receivedTranscript;
-              console.log("New complete transcript:", newTranscript);
-              return newTranscript;
-            });
-          } else {
-            console.log("Empty transcript received, not updating state");
-          }
-        } else {
-          console.log("Received transcript event but missing expected structure:", data);
-        }
-      });
-      
-      connection.on(LiveTranscriptionEvents.Error, (error) => {
-        console.error("Deepgram error event received:", error);
-        stopRecording();
-      });
-      
-      connection.on(LiveTranscriptionEvents.Warning, (warning) => {
-        console.warn("Deepgram warning event received:", warning);
-      });
-      
-      console.log("All Deepgram event listeners set up successfully");
-      
-    } catch (error) {
-      console.error("Error in startRecording:", error);
-    }
-  };
-
-  // Helper function to calculate audio level for debugging
-  const calculateAudioLevel = (buffer) => {
-    let sum = 0;
-    for (let i = 0; i < buffer.length; i++) {
-      sum += Math.abs(buffer[i]);
-    }
-    return sum / buffer.length;
-  };
-
-  const stopRecording = () => {
-    console.log("stopRecording function called");
-    
-    // Clean up audio processing
-    if (mediaRecorderRef.current) {
-      console.log("Cleaning up media recorder...");
-      if (mediaRecorderRef.current.source) {
-        console.log("Disconnecting audio source");
-        mediaRecorderRef.current.source.disconnect();
-      }
-      if (mediaRecorderRef.current.processor) {
-        console.log("Disconnecting audio processor");
-        mediaRecorderRef.current.processor.disconnect();
-      }
-      if (mediaRecorderRef.current.stream) {
-        console.log("Stopping audio tracks");
-        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-      }
+    // Stop MediaRecorder
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      console.log("Stopping MediaRecorder...");
+      mediaRecorderRef.current.stop();
       mediaRecorderRef.current = null;
     }
-    
-    // Close audio context
-    if (audioContextRef.current) {
-      console.log("Closing AudioContext...");
-      if (audioContextRef.current.state !== 'closed') {
-        audioContextRef.current.close();
-        console.log("AudioContext closed");
-      }
-      audioContextRef.current = null;
-    }
-    
-    // Close Deepgram connection
-    if (deepgramConnectionRef.current) {
-      console.log("Finishing Deepgram connection...");
-      try {
-        deepgramConnectionRef.current.finish();
-        console.log("Deepgram connection finished successfully");
-      } catch (error) {
-        console.error("Error finishing Deepgram connection:", error);
-      }
-      deepgramConnectionRef.current = null;
-    }
-    
-    setIsRecording(false);
-  };
 
-  useEffect(() => {
-    console.log("Component mounted");
-    // Clean up on component unmount
-    return () => {
-      console.log("Component unmounting, cleaning up...");
-      stopRecording();
-    };
+    // Close WebSocket
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      console.log("Closing WebSocket connection...");
+      socketRef.current.close();
+      socketRef.current = null;
+    }
+
+    // Stop media stream tracks
+    if (streamRef.current) {
+      console.log("Stopping media stream tracks...");
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+
+    setIsRecording(false);
+    setConnectionStatus('Not Connected');
+    console.log("Cleanup complete.");
   }, []);
 
-  console.log("Rendering component with transcript:", transcript);
-  
+  // --- Start Recording ---
+  const startRecording = async () => {
+    console.log("startRecording function called");
+    if (isRecording) {
+      console.warn("Already recording.");
+      return;
+    }
+
+    // Clear previous transcript before starting new recording
+    setTranscript('');
+    setConnectionStatus('Connecting...');
+
+    try {
+      // Check browser support for MediaRecorder and webm format
+      if (!window.MediaRecorder || !MediaRecorder.isTypeSupported('audio/webm')) {
+        alert('Your browser does not support the required audio recording capabilities');
+        setConnectionStatus('Browser not supported');
+        return;
+      }
+
+      // Request microphone access
+      console.log("Requesting microphone access...");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log("Microphone access granted");
+      streamRef.current = stream;
+
+      // Create WebSocket connection to Deepgram
+      console.log("Creating WebSocket connection to Deepgram...");
+      const socket = new WebSocket('wss://api.deepgram.com/v1/listen', [
+        'token',
+        DEEPGRAM_API_KEY
+      ]);
+      socketRef.current = socket;
+
+      // Set up WebSocket event handlers
+      socket.onopen = () => {
+        console.log("WebSocket connection opened");
+        setConnectionStatus('Connected');
+
+        // Create and start MediaRecorder
+        const mediaRecorder = new MediaRecorder(stream, {
+          mimeType: 'audio/webm',
+        });
+        mediaRecorderRef.current = mediaRecorder;
+
+        // Handle data available event
+        mediaRecorder.addEventListener('dataavailable', async (event) => {
+          if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
+            // Send audio data to Deepgram
+            socket.send(event.data);
+            console.log("Sent audio chunk, size:", event.data.size);
+          }
+        });
+
+        // Start recording, sending data every 1000ms
+        mediaRecorder.start(1000);
+        setIsRecording(true);
+        console.log("MediaRecorder started");
+      };
+
+      // Handle incoming messages (transcription results)
+      socket.onmessage = (message) => {
+        try {
+          const received = JSON.parse(message.data);
+          console.log("Received message from Deepgram:", received);
+          
+          // Extract transcript from the response
+          if (received.channel && 
+              received.channel.alternatives && 
+              received.channel.alternatives.length > 0) {
+            
+            const receivedText = received.channel.alternatives[0].transcript;
+            
+            // Only add non-empty transcripts that are final
+            if (receivedText && received.is_final) {
+              console.log("Final transcript:", receivedText);
+              setTranscript(prev => (prev + ' ' + receivedText).trim());
+            }
+          }
+        } catch (error) {
+          console.error("Error parsing message:", error);
+        }
+      };
+
+      // Handle WebSocket closure
+      socket.onclose = (event) => {
+        console.log("WebSocket connection closed:", event);
+        setConnectionStatus(`Disconnected (${event.code})`);
+        setIsRecording(false);
+        
+        // Stop MediaRecorder if it's still running
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          mediaRecorderRef.current.stop();
+        }
+      };
+
+      // Handle WebSocket errors
+      socket.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        setConnectionStatus('Connection Error');
+        cleanupResources();
+      };
+
+    } catch (error) {
+      console.error("Error in startRecording:", error);
+      setConnectionStatus(`Error: ${error.message || 'Failed to start'}`);
+      alert(`Failed to start recording: ${error.message || 'Unknown error'}`);
+      cleanupResources();
+    }
+  };
+
+  // --- Stop Recording ---
+  const stopRecording = () => {
+    console.log("stopRecording function called by user");
+    cleanupResources();
+  };
+
+  // --- Effect for Component Unmount Cleanup ---
+  useEffect(() => {
+    console.log("App component mounted");
+    return () => {
+      console.log("App component unmounting...");
+      cleanupResources();
+    };
+  }, [cleanupResources]);
+
   return (
     <>
       {/* Navbar */}
@@ -228,17 +183,25 @@ function App() {
             <div className="flex items-center">
               <span className="text-2xl font-bold text-blue-600">MeetingSummarizer</span>
             </div>
-            <div className="flex items-center">
-              <button className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700">
-                Login
-              </button>
+            <div className="flex items-center space-x-4">
+               <span className={`text-sm font-medium px-2 py-1 rounded ${
+                 connectionStatus === 'Connected' ? 'bg-green-100 text-green-800' :
+                 connectionStatus.startsWith('Error') ? 'bg-red-100 text-red-800' :
+                 connectionStatus === 'Connecting...' ? 'bg-yellow-100 text-yellow-800' :
+                 'bg-gray-100 text-gray-800'
+               }`}>
+                 Status: {connectionStatus}
+               </span>
+               <button className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700">
+                 Login
+               </button>
             </div>
           </div>
         </div>
       </nav>
 
       {/* Main Content */}
-      <main className="min-h-screen bg-gradient-to-b from-blue-50 to-white pt-16">
+      <main className="min-h-screen bg-gradient-to-b from-blue-50 to-white pt-16 font-sans">
         {/* Hero Section */}
         <div className="py-12 w-full">
           <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
@@ -250,34 +213,44 @@ function App() {
               <p className="mt-3 mx-auto text-base text-gray-500 sm:text-lg md:mt-5 md:text-xl">
                 The smart way to summarize and organize your meeting notes
               </p>
-              
+
               {/* Transcription Section */}
               <div className="mt-8 mx-auto max-w-3xl">
-                <div className="bg-white shadow-md rounded-lg p-6 mb-8">
-                  <h2 className="text-2xl font-bold mb-4 text-gray-800">Real-time Transcription</h2>
-                  
+                <div className="bg-white shadow-lg rounded-lg p-6 mb-8">
+                  <h2 className="text-2xl font-semibold mb-4 text-gray-800">Real-time Transcription</h2>
+
                   {/* Transcription Display */}
-                  <div className="bg-gray-50 border border-gray-200 rounded-md p-4 mb-4 min-h-[200px] max-h-[400px] overflow-y-auto text-left">
+                  <div className="bg-gray-50 border border-gray-200 rounded-md p-4 mb-6 min-h-[200px] max-h-[400px] overflow-y-auto text-left text-gray-700 leading-relaxed">
                     {transcript ? (
                       <p>{transcript}</p>
                     ) : (
-                      <p className="text-gray-400 italic">Your transcription will appear here... (UI Check: This text should be visible)</p>
+                      <p className="text-gray-400 italic">
+                        {connectionStatus === 'Connected' ? 'Listening... Speak into your microphone.' :
+                         connectionStatus === 'Connecting...' ? 'Connecting to transcription service...' :
+                         connectionStatus.includes('Error') ? 'An error occurred. Please try again.' :
+                         'Click "Start Recording" to begin.'}
+                      </p>
                     )}
                   </div>
-                  
-                  <div className="bg-blue-100 p-2 mb-4 rounded">
-                    <p className="text-sm">Debug info: isRecording={isRecording.toString()}, transcript length={transcript.length}</p>
+
+                  {/* Status Display */}
+                  <div className="mb-4 text-sm">
+                    <span className={`inline-block px-2 py-1 rounded ${
+                      connectionStatus === 'Connected' ? 'bg-green-100 text-green-800' :
+                      connectionStatus.includes('Error') ? 'bg-red-100 text-red-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      Status: {connectionStatus}
+                    </span>
                   </div>
-                  
+
                   {/* Recording Controls */}
                   <div className="flex justify-center space-x-4">
                     {!isRecording ? (
                       <button 
-                        onClick={() => {
-                          console.log("Start Recording button clicked");
-                          startRecording();
-                        }} 
+                        onClick={startRecording} 
                         className="px-6 py-3 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center"
+                        disabled={connectionStatus === 'Connecting...'}
                       >
                         <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
                           <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
@@ -286,10 +259,7 @@ function App() {
                       </button>
                     ) : (
                       <button 
-                        onClick={() => {
-                          console.log("Stop Recording button clicked");
-                          stopRecording();
-                        }} 
+                        onClick={stopRecording} 
                         className="px-6 py-3 bg-red-600 text-white font-medium rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 flex items-center"
                       >
                         <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
@@ -300,18 +270,17 @@ function App() {
                     )}
                     
                     <button 
-                      onClick={() => {
-                        console.log("Clear button clicked");
-                        setTranscript('');
-                      }} 
+                      onClick={() => setTranscript('')} 
                       className="px-6 py-3 bg-gray-200 text-gray-700 font-medium rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                      disabled={isRecording}
                     >
                       Clear
                     </button>
                   </div>
                 </div>
               </div>
-              
+
+              {/* Placeholder Buttons */}
               <div className="mt-5 mx-auto flex flex-col sm:flex-row justify-center md:mt-8">
                 <div className="rounded-md shadow">
                   <a href="#" className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 md:py-4 md:text-lg md:px-10">
@@ -329,9 +298,9 @@ function App() {
         </div>
 
         {/* Footer */}
-        <footer className="bg-white">
+        <footer className="bg-white mt-auto">
           <div className="w-full mx-auto py-6 px-4 sm:px-6 lg:px-8">
-            <p className="text-center text-gray-500">© 2025 Meeting Summarizer. All rights reserved.</p>
+            <p className="text-center text-gray-500 text-sm">© {new Date().getFullYear()} Meeting Summarizer. All rights reserved.</p>
           </div>
         </footer>
       </main>
@@ -339,4 +308,4 @@ function App() {
   )
 }
 
-export default App
+export default App;
