@@ -6,8 +6,6 @@ import { useAuth } from './context/AuthContext';
 import LoginScreen from './components/LoginScreen';
 import SignupScreen from './components/SignupScreen';
 
-const DEEPGRAM_API_KEY = '16dcb20c07a4be54791de06f5059e9c412284862';
-
 // Sub-components
 const ConnectionBadge = ({ status }) => (
   <span className={`px-3 py-1 rounded-full text-sm ${
@@ -41,7 +39,7 @@ const SpeakerBadge = ({ speaker }) => (
 const TranscriptViewer = ({ entries }) => (
   <div className="h-96 overflow-y-auto p-4 bg-gray-50 rounded-md">
     {entries.map((entry, index) => (
-      <div key={index} className="mb-3 last:mb-0">
+      <div key={`${entry.timestamp}-${index}`} className="mb-3 last:mb-0">
         <div className="flex items-center mb-1">
           <SpeakerBadge speaker={entry.speaker} />
           <span className="font-medium text-gray-700">
@@ -55,38 +53,39 @@ const TranscriptViewer = ({ entries }) => (
 );
 
 const ControlPanel = ({ isRecording, startRecording, stopRecording, clearTranscript, isExporting, exportJSON, exportPDF }) => (
-  <div className="flex justify-center gap-4">
-    {!isRecording ? (
-      <button
-        onClick={startRecording}
-        className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
-      >
-        <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" />
-        </svg>
-        Start Recording
-      </button>
-    ) : (
-      <button
-        onClick={stopRecording}
-        className="px-6 py-3 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center"
-      >
-        <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" />
-        </svg>
-        Stop Recording
-      </button>
-    )}
-
-    <button
-      onClick={clearTranscript}
-      className="px-6 py-3 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
-      disabled={isRecording}
-    >
-      Clear
-    </button>
-    
+  <div className="flex flex-col md:flex-row justify-center gap-4">
     <div className="flex gap-2">
+      {!isRecording ? (
+        <button
+          onClick={startRecording}
+          className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
+        >
+          <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" />
+          </svg>
+          Start Recording
+        </button>
+      ) : (
+        <button
+          onClick={stopRecording}
+          className="px-6 py-3 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center"
+        >
+          <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" />
+          </svg>
+          Stop Recording
+        </button>
+      )}
+      <button
+        onClick={clearTranscript}
+        className="px-6 py-3 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+        disabled={isRecording}
+      >
+        Clear
+      </button>
+    </div>
+    
+    <div className="flex gap-2 justify-center">
       <button
         onClick={exportJSON}
         className="px-4 py-2 bg-gray-200 rounded-md hover:bg-gray-300 text-sm"
@@ -137,7 +136,7 @@ const SentimentTimeline = ({ data }) => (
     <div className="flex overflow-x-auto pb-4">
       {data.slice(-10).map((point, index) => (
         <div 
-          key={index}
+          key={`${point.timestamp}-${index}`}
           className="flex-shrink-0 w-32 p-2 mr-3 border rounded-lg bg-white"
         >
           <div className={`h-1 w-full mb-2 rounded-full ${
@@ -157,7 +156,7 @@ const TopicCloud = ({ topics }) => (
     <div className="flex flex-wrap gap-2">
       {topics.map((topic, index) => (
         <span 
-          key={index}
+          key={`${topic.label}-${index}`}
           className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
         >
           {topic.label} ({topic.score})
@@ -167,20 +166,37 @@ const TopicCloud = ({ topics }) => (
   </div>
 );
 
+const SummarySection = ({ summary, isLoading }) => (
+  <div className="mb-6">
+    <h4 className="font-medium mb-2">AI Summary</h4>
+    {isLoading ? (
+      <div className="animate-pulse flex space-x-4">
+        <div className="flex-1 space-y-2">
+          <div className="h-2 bg-gray-200 rounded"></div>
+          <div className="h-2 bg-gray-200 rounded"></div>
+        </div>
+      </div>
+    ) : (
+      <p className="text-sm text-gray-600 whitespace-pre-wrap">{summary || 'No summary generated yet'}</p>
+    )}
+  </div>
+);
+
+// Add these constants at the top of your App function
 function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [transcriptEntries, setTranscriptEntries] = useState([]);
   const [connectionStatus, setConnectionStatus] = useState('Not Connected');
-  const [authView, setAuthView] = useState(null); // null, 'login', or 'signup'
+  const [authView, setAuthView] = useState(null);
   const [sentimentData, setSentimentData] = useState([]);
   const [actionItems, setActionItems] = useState([]);
   const [topics, setTopics] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isExporting, setIsExporting] = useState(false);
+  const [summary, setSummary] = useState('');
+  const [isSummarizing, setIsSummarizing] = useState(false);
   
   const { currentUser, logout } = useAuth();
-
-  // Refs for resource management
   const socketRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const streamRef = useRef(null);
@@ -188,17 +204,20 @@ function App() {
   const transcriptEndRef = useRef(null);
   const sentimentTimerRef = useRef(null);
   const topicTimerRef = useRef(null);
-  const timestampsRef = useRef([]);
-  const currentSpeakerRef = useRef(null);
-  const currentSentenceRef = useRef([]);
+  const summaryTimerRef = useRef(null);
+  const transcriptRef = useRef([]);
 
+  // Replace these with your actual API keys
   const SENTIMENT_INTERVAL = 15000;
   const TOPIC_INTERVAL = 30000;
+  const SUMMARY_INTERVAL = 45000;
+  const DEEPGRAM_API_KEY = '16dcb20c07a4be54791de06f5059e9c412284862';
+  const HF_API_KEY = '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';
 
-  // Cleanup resources
   const cleanupResources = useCallback(() => {
-    clearInterval(sentimentTimerRef.current);
-    clearInterval(topicTimerRef.current);
+    [sentimentTimerRef, topicTimerRef, summaryTimerRef].forEach(ref => 
+      clearInterval(ref.current)
+    );
 
     if (mediaRecorderRef.current?.state !== 'inactive') {
       mediaRecorderRef.current?.stop();
@@ -206,77 +225,158 @@ function App() {
     socketRef.current?.close();
     streamRef.current?.getTracks().forEach(track => track.stop());
     
-    // Flush remaining audio data
-    if (currentSpeakerRef.current && currentSentenceRef.current.length > 0) {
-      setTranscriptEntries(prev => [
-        ...prev, 
-        {
-          speaker: currentSpeakerRef.current,
-          text: currentSentenceRef.current.join(' '),
-          timestamp: Date.now()
-        }
-      ]);
-    }
-
     setIsRecording(false);
     setConnectionStatus('Not Connected');
-    mediaRecorderRef.current = null;
-    socketRef.current = null;
-    streamRef.current = null;
-    currentSpeakerRef.current = null;
-    currentSentenceRef.current = [];
   }, []);
 
+  // In the analyzeSentiment function, ensure proper sentiment extraction
   const analyzeSentiment = useCallback(async (texts) => {
     try {
-      // This is a placeholder. In a real app, you'd call a sentiment analysis API
-      const mockSentiments = ['POSITIVE', 'NEUTRAL', 'NEGATIVE'];
-      const randomResults = texts.map(text => ({
-        text,
-        sentiment: mockSentiments[Math.floor(Math.random() * mockSentiments.length)],
-        timestamp: Date.now()
-      }));
+      const response = await fetch(
+        'https://api-inference.huggingface.co/models/distilbert-base-uncased-finetuned-sst-2-english',
+        {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${HF_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ inputs: texts }),
+        }
+      );
+
+      const data = await response.json();
       
-      setSentimentData(prev => [...prev, ...randomResults]);
+      // Handle model loading errors
+      if (data.error) {
+        console.error('Model loading error:', data.error);
+        return;
+      }
+
+      // Handle array of results for multiple texts
+      const results = Array.isArray(data) ? data : [data];
+      
+      setSentimentData(prev => [
+        ...prev,
+        ...results.map((item, index) => ({
+          text: texts[index] || '',
+          // Fix potential undefined errors with optional chaining and fallbacks
+          sentiment: item[0]?.label || 'NEUTRAL', // Simplified label extraction
+          timestamp: Date.now()
+        }))
+      ]);
     } catch (error) {
       console.error('Sentiment analysis error:', error);
     }
   }, []);
 
-  const detectTopics = useCallback(() => {
+  const detectTopics = useCallback(async () => {
     try {
-      // This is a placeholder. In a real app, you'd call a topic detection API
-      const possibleTopics = [
-        'Development', 'Marketing', 'Design', 'Finance', 
-        'Operations', 'Planning', 'Customer Service'
-      ];
+      const transcriptText = transcriptEntries.map(t => t.text).join('\n');
+      if (!transcriptText || transcriptText.length < 10) return;
       
-      const randomTopics = Array.from({ length: 3 }, () => ({
-        label: possibleTopics[Math.floor(Math.random() * possibleTopics.length)],
-        score: (0.5 + Math.random() * 0.5).toFixed(2)
-      }));
+      const response = await fetch(
+        'https://api-inference.huggingface.co/models/facebook/bart-large-mnli',
+        {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${HF_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            inputs: transcriptText,
+            parameters: {
+              candidate_labels: ['Development', 'Marketing', 'Design', 'Finance', 'Planning', 'Review', 'Strategy'],
+              multi_class: true
+            }
+          }),
+        }
+      );
+
+      const data = await response.json();
       
-      setTopics(randomTopics);
+      if (data.error) {
+        console.error('Topic detection error:', data.error);
+        return;
+      }
+
+      // Proper response structure handling
+      if (data?.labels) {
+        const topics = data.labels
+          .slice(0, 3) // Get top 3 topics
+          .map((label, index) => ({
+            label,
+            score: data.scores[index].toFixed(2)
+          }));
+        setTopics(topics);
+      }
     } catch (error) {
       console.error('Topic detection error:', error);
     }
-  }, []);
+  }, [transcriptEntries]);
+
+  const generateSummary = useCallback(async () => {
+    if (transcriptEntries.length < 3 || isSummarizing) return;
+    
+    setIsSummarizing(true);
+    try {
+      const transcriptText = transcriptEntries.map(t => t.text).join('\n');
+      const response = await fetch(
+        'https://api-inference.huggingface.co/models/facebook/bart-large-cnn',
+        {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${HF_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            inputs: transcriptText,
+            parameters: { max_length: 200, min_length: 50 }
+          }),
+        }
+      );
+
+      const data = await response.json();
+      
+      if (data.error) {
+        console.error('Summary generation error:', data.error);
+        return;
+      }
+
+      // Correct response structure handling
+      if (data?.summary_text) {
+        setSummary(data.summary_text);
+      } else if (data[0]?.summary_text) { // Fallback for different response format
+        setSummary(data[0].summary_text);
+      }
+    } catch (error) {
+      console.error('Summary generation error:', error);
+    }
+    setIsSummarizing(false);
+  }, [transcriptEntries, isSummarizing]);
 
   const detectActionItems = useCallback((text, speaker) => {
-    const actionRegex = /(\b(?:need to|must|should|please|action item|todo|assign(?:ed)?|task)\b.*?)(?:\.|$)/gi;
+    // Improved action item detection regex
+    const actionRegex = /(\b(?:need to|must|should|please|action item|todo|assign(?:ed)?|task|follow up|deadline|next steps|action required|critical|urgent)\b.*?)(?:\.|$)/gi;
     const matches = [...text.matchAll(actionRegex)];
-
+    
     if (matches.length > 0) {
-      setActionItems(prev => [
-        ...prev,
-        ...matches.map(m => ({
-          text: m[1],
-          speaker,
-          timestamp: Date.now(),
-          completed: false,
-          id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`
-        }))
-      ]);
+      setActionItems(prev => {
+        const existingItems = new Set(prev.map(item => item.text.toLowerCase()));
+        const newItems = matches
+          .map(m => m[1].trim())
+          .filter(text => !existingItems.has(text.toLowerCase()));
+
+        return [
+          ...prev,
+          ...newItems.map(text => ({
+            text,
+            speaker,
+            timestamp: Date.now(),
+            completed: false,
+            id: crypto.randomUUID()
+          }))
+        ];
+      });
     }
   }, []);
 
@@ -286,6 +386,7 @@ function App() {
       actionItems,
       sentimentData,
       topics,
+      summary,
       createdAt: new Date().toISOString()
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -296,24 +397,40 @@ function App() {
     setIsExporting(true);
     try {
       const pdfDoc = await PDFDocument.create();
-      const page = pdfDoc.addPage();
+      let page = pdfDoc.addPage();
       const { width, height } = page.getSize();
       const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
       let y = height - 50;
-      const addText = (text, size = 12) => {
-        page.drawText(text, { x: 50, y, size, font });
+      const addText = (text, size = 12, isBold = false) => {
+        if (y < 100) {
+          page = pdfDoc.addPage();
+          y = height - 50;
+        }
+        page.drawText(text, {
+          x: 50,
+          y,
+          size,
+          font: isBold ? boldFont : font
+        });
         y -= size + 10;
       };
 
-      addText('Meeting Summary', 18);
-      addText(`Date: ${new Date().toLocaleString()}`);
-      addText('\nTranscript:');
+      addText('Meeting Summary', 18, true);
+      addText(`Date: ${new Date().toLocaleString()}`, 12);
+      
+      if (summary) {
+        addText('\nAI Summary:', 14, true);
+        summary.split('. ').forEach(sentence => addText(`• ${sentence.trim()}`));
+      }
+
+      addText('\nTranscript:', 14, true);
       transcriptEntries.forEach(entry => {
-        addText(`[Speaker ${entry.speaker}] ${entry.text}`);
+        addText(`Speaker ${entry.speaker}: ${entry.text}`);
       });
 
-      addText('\nAction Items:');
+      addText('\nAction Items:', 14, true);
       actionItems.forEach(item => {
         addText(`• ${item.text} (Speaker ${item.speaker})`);
       });
@@ -327,120 +444,160 @@ function App() {
     setIsExporting(false);
   };
 
-  // Start recording handler
+  const handleMessage = useCallback((message) => {
+    try {
+      const data = JSON.parse(message.data);
+      console.log('Processing Deepgram message:', data);
+      
+      if (!data?.is_final) {
+        console.log('Skipping non-final result');
+        return;
+      }
+      
+      if (!data.channel?.alternatives?.[0]?.words) {
+        console.log('No words in response');
+        return;
+      }
+
+      const newEntries = [];
+      const words = data.channel.alternatives[0].words;
+      let currentSpeaker = null;
+      let currentText = [];
+
+      words.forEach((word) => {
+        // Make sure we get a speaker ID, or default to a unique value
+        const speakerId = word.speaker !== undefined ? word.speaker : Math.floor(Math.random() * 1000);
+        
+        // Map Deepgram speaker IDs to our display speaker numbers
+        if (!speakerMapRef.current.has(speakerId)) {
+          speakerMapRef.current.set(speakerId, speakerMapRef.current.size + 1);
+        }
+        const displaySpeaker = speakerMapRef.current.get(speakerId);
+
+        // When speaker changes, create a new transcript entry
+        if (displaySpeaker !== currentSpeaker) {
+          if (currentText.length > 0) {
+            newEntries.push({
+              speaker: currentSpeaker,
+              text: currentText.join(' '),
+              timestamp: Date.now()
+            });
+            currentText = [];
+          }
+          currentSpeaker = displaySpeaker;
+        }
+        currentText.push(word.punctuated_word || word.word);
+      });
+
+      // Add the final speaker's text
+      if (currentText.length > 0 && currentSpeaker !== null) {
+        newEntries.push({
+          speaker: currentSpeaker,
+          text: currentText.join(' '),
+          timestamp: Date.now()
+        });
+      }
+
+      if (newEntries.length > 0) {
+        console.log('Adding new transcript entries:', newEntries);
+        setTranscriptEntries(prev => [...prev, ...newEntries]);
+        newEntries.forEach(entry => detectActionItems(entry.text, entry.speaker));
+      }
+    } catch (error) {
+      console.error('Message processing error:', error);
+    }
+  }, [detectActionItems]);
+
+  // Add this effect to keep transcriptRef in sync with transcriptEntries
+  useEffect(() => {
+    transcriptRef.current = transcriptEntries;
+  }, [transcriptEntries]);
+
   const startRecording = async () => {
     if (isRecording) return;
 
-    // Reset tracking for new session
     speakerMapRef.current = new Map();
-    currentSpeakerRef.current = null;
-    currentSentenceRef.current = [];
     setTranscriptEntries([]);
-    setSentimentData([]);
     setActionItems([]);
+    setSentimentData([]);
     setTopics([]);
+    setSummary('');
     setConnectionStatus('Connecting...');
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Request microphone access
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        } 
+      });
       streamRef.current = stream;
 
-      const socket = new WebSocket('wss://api.deepgram.com/v1/listen?diarize=true&punctuate=true&utterances=true', 
+      // Connect to Deepgram with enhanced parameters for better diarization
+      const socket = new WebSocket(
+        'wss://api.deepgram.com/v1/listen?diarize=true&punctuate=true&model=nova-2&smart_format=true',
         ['token', DEEPGRAM_API_KEY]
       );
       socketRef.current = socket;
 
       socket.onopen = () => {
+        console.log('WebSocket connection established');
         setConnectionStatus('Connected');
-        const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        
+        // Create media recorder with proper MIME type
+        const mediaRecorder = new MediaRecorder(stream, { 
+          mimeType: 'audio/webm' 
+        });
         mediaRecorderRef.current = mediaRecorder;
 
         mediaRecorder.addEventListener('dataavailable', (event) => {
           if (socket.readyState === WebSocket.OPEN && event.data.size > 0) {
             socket.send(event.data);
+            console.log('Sent audio chunk to Deepgram');
           }
         });
 
         mediaRecorder.start(1000);
         setIsRecording(true);
-        
-        // Setup analysis intervals
+
+        // Setup analysis intervals with proper timing
         sentimentTimerRef.current = setInterval(() => {
-          const recentTexts = transcriptEntries
+          const recentTexts = transcriptRef.current
             .slice(-5)
-            .filter(entry => !entry.analyzed)
             .map(entry => entry.text);
-          
-          if (recentTexts.length > 0) analyzeSentiment(recentTexts);
+          if (recentTexts.length > 0) {
+            console.log('Running sentiment analysis on recent texts');
+            analyzeSentiment(recentTexts);
+          }
         }, SENTIMENT_INTERVAL);
 
-        topicTimerRef.current = setInterval(detectTopics, TOPIC_INTERVAL);
+        topicTimerRef.current = setInterval(() => {
+          console.log('Running topic detection');
+          detectTopics();
+        }, TOPIC_INTERVAL);
+        
+        summaryTimerRef.current = setInterval(() => {
+          console.log('Generating summary');
+          generateSummary();
+        }, SUMMARY_INTERVAL);
       };
 
-      socket.onmessage = (message) => {
-        try {
-          const data = JSON.parse(message.data);
-          if (!data.is_final || !data.channel?.alternatives?.[0]?.words) return;
-
-          const newEntries = [];
-          const words = data.channel.alternatives[0].words;
-
-          words.forEach((word) => {
-            const deepgramSpeakerId = word.speaker;
-            
-            // Map Deepgram speaker ID to sequential number
-            if (!speakerMapRef.current.has(deepgramSpeakerId)) {
-              speakerMapRef.current.set(deepgramSpeakerId, speakerMapRef.current.size + 1);
-            }
-            const displaySpeaker = speakerMapRef.current.get(deepgramSpeakerId);
-
-            // Speaker change detection
-            if (displaySpeaker !== currentSpeakerRef.current) {
-              if (currentSpeakerRef.current !== null && currentSentenceRef.current.length > 0) {
-                const entryText = currentSentenceRef.current.join(' ');
-                newEntries.push({
-                  speaker: currentSpeakerRef.current,
-                  text: entryText,
-                  timestamp: Date.now()
-                });
-                
-                // Check for action items in this sentence
-                detectActionItems(entryText, currentSpeakerRef.current);
-              }
-              currentSpeakerRef.current = displaySpeaker;
-              currentSentenceRef.current = [word.punctuated_word || word.word];
-            } else {
-              currentSentenceRef.current.push(word.punctuated_word || word.word);
-            }
-          });
-
-          // Add remaining sentence for current speaker
-          if (currentSpeakerRef.current && currentSentenceRef.current.length > 0) {
-            const entryText = currentSentenceRef.current.join(' ');
-            newEntries.push({
-              speaker: currentSpeakerRef.current,
-              text: entryText,
-              timestamp: Date.now()
-            });
-            
-            // Process this text for action items
-            detectActionItems(entryText, currentSpeakerRef.current);
-            
-            // Reset current sentence but keep the speaker for continuation
-            currentSentenceRef.current = [];
-          }
-
-          if (newEntries.length > 0) {
-            setTranscriptEntries(prev => [...prev, ...newEntries]);
-            timestampsRef.current.push(...newEntries.map(entry => entry.timestamp));
-          }
-        } catch (error) {
-          console.error('Message processing error:', error);
-        }
+      socket.onmessage = (event) => {
+        console.log('Received message from Deepgram');
+        handleMessage(event);
       };
-
-      socket.onclose = cleanupResources;
-      socket.onerror = () => setConnectionStatus('Connection Error');
+      
+      socket.onclose = (event) => {
+        console.log('WebSocket closed:', event);
+        cleanupResources();
+      };
+      
+      socket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setConnectionStatus('Connection Error');
+      };
 
     } catch (error) {
       console.error('Recording startup error:', error);
@@ -448,6 +605,16 @@ function App() {
       cleanupResources();
     }
   };
+
+  useEffect(() => () => cleanupResources(), [cleanupResources]);
+  useEffect(() => transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' }), [transcriptEntries]);
+  
+  // The useEffect for automatic summary generation when recording stops
+  useEffect(() => {
+    if (!isRecording && transcriptEntries.length > 0) {
+      generateSummary();
+    }
+  }, [isRecording, transcriptEntries, generateSummary]);
 
   const toggleActionItemCompletion = useCallback((id) => {
     setActionItems(prev => 
@@ -457,47 +624,20 @@ function App() {
     );
   }, []);
 
-  // Component cleanup
-  useEffect(() => () => cleanupResources(), [cleanupResources]);
-  
-  useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [transcriptEntries]);
-
-  // Handle authentication
-  const handleLogin = () => {
-    if (currentUser) {
-      // Log out if already logged in
-      logout();
-    } else {
-      // Show login screen
-      setAuthView('login');
-    }
-  };
-  
-  const handleAuthSuccess = () => {
-    setAuthView(null);
-  };
-
   const clearTranscript = () => {
     setTranscriptEntries([]);
     setActionItems([]);
     setSentimentData([]);
     setTopics([]);
+    setSummary('');
   };
-  
-  const filteredTranscript = transcriptEntries.filter(entry =>
-    entry.text.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
-  // Render auth screens if the user is trying to log in or sign up
+  const handleLogin = () => currentUser ? logout() : setAuthView('login');
+  
   if (authView === 'login') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <LoginScreen 
-          onToggleAuth={setAuthView}
-          onLoginSuccess={handleAuthSuccess} 
-        />
+        <LoginScreen onToggleAuth={setAuthView} onSuccess={() => setAuthView(null)} />
       </div>
     );
   }
@@ -505,10 +645,7 @@ function App() {
   if (authView === 'signup') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <SignupScreen 
-          onToggleAuth={setAuthView}
-          onSignupSuccess={handleAuthSuccess} 
-        />
+        <SignupScreen onToggleAuth={setAuthView} onSuccess={() => setAuthView(null)} />
       </div>
     );
   }
@@ -517,14 +654,14 @@ function App() {
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex justify-between items-center">
-            <h1 className="text-xl font-bold text-blue-600">Meeting Summarizer</h1>
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <h1 className="text-xl font-bold text-blue-600">AI Meeting Assistant</h1>
             <div className="flex items-center gap-4">
               <ConnectionBadge status={connectionStatus} />
               {currentUser ? (
                 <div className="flex items-center gap-3">
                   <span className="text-sm font-medium">
-                    {currentUser.profile?.name || currentUser.email}
+                    {currentUser.name || currentUser.email}
                   </span>
                   <button 
                     onClick={handleLogin}
@@ -534,12 +671,20 @@ function App() {
                   </button>
                 </div>
               ) : (
-                <button 
-                  onClick={handleLogin}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  Login
-                </button>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setAuthView('login')}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  >
+                    Login
+                  </button>
+                  <button 
+                    onClick={() => setAuthView('signup')}
+                    className="px-4 py-2 border border-blue-600 text-blue-600 rounded-md hover:bg-blue-50"
+                  >
+                    Sign Up
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -553,7 +698,10 @@ function App() {
               <h2 className="text-2xl font-semibold">Live Transcription</h2>
               <SearchInput value={searchQuery} onChange={setSearchQuery} />
             </div>
-            <TranscriptViewer entries={filteredTranscript} />
+            
+            <TranscriptViewer entries={transcriptEntries.filter(e => 
+              e.text.toLowerCase().includes(searchQuery.toLowerCase())
+            )} />
             <div ref={transcriptEndRef} />
           </div>
 
@@ -568,8 +716,9 @@ function App() {
           />
         </div>
 
-        <div className="bg-white rounded-lg shadow-md p-6">
+        <div className="bg-white rounded-lg shadow-md p-6 h-fit lg:sticky lg:top-8">
           <h2 className="text-xl font-semibold mb-6">Meeting Insights</h2>
+          <SummarySection summary={summary} isLoading={isSummarizing} />
           <SentimentTimeline data={sentimentData} />
           <ActionItemsList items={actionItems} onToggleComplete={toggleActionItemCompletion} />
           <TopicCloud topics={topics} />
@@ -579,7 +728,7 @@ function App() {
       <footer className="mt-12 border-t border-gray-200">
         <div className="max-w-7xl mx-auto px-4 py-6">
           <p className="text-center text-sm text-gray-500">
-            © {new Date().getFullYear()} Meeting Summarizer. All rights reserved.
+            © {new Date().getFullYear()} AI Meeting Assistant. All rights reserved.
           </p>
         </div>
       </footer>
