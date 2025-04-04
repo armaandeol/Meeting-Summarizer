@@ -1,311 +1,291 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import './App.css';
+import { useAuth } from './context/AuthContext';
+import LoginScreen from './components/LoginScreen';
+import SignupScreen from './components/SignupScreen';
 
-// --- IMPORTANT ---
-// Replace this with your actual Deepgram API Key.
-// In a real application, use environment variables (e.g., import.meta.env.VITE_DEEPGRAM_API_KEY)
 const DEEPGRAM_API_KEY = '16dcb20c07a4be54791de06f5059e9c412284862';
-// --- IMPORTANT ---
 
 function App() {
-  console.log("App component rendering");
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [connectionStatus, setConnectionStatus] = useState('Not Connected');
+  const [authView, setAuthView] = useState(null); // null, 'login', or 'signup'
+  
+  const { currentUser, logout } = useAuth();
 
-  // Refs for managing resources
+  // Refs for resource management
   const socketRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const streamRef = useRef(null);
+  const speakerMapRef = useRef(new Map());
+  const currentSpeakerRef = useRef(null);
+  const currentSentenceRef = useRef([]);
 
-  // --- Cleanup Function ---
+  // Cleanup resources
   const cleanupResources = useCallback(() => {
-    console.log("Cleaning up resources...");
-
-    // Stop MediaRecorder
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      console.log("Stopping MediaRecorder...");
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current = null;
+    if (mediaRecorderRef.current?.state !== 'inactive') {
+      mediaRecorderRef.current?.stop();
     }
-
-    // Close WebSocket
-    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-      console.log("Closing WebSocket connection...");
-      socketRef.current.close();
-      socketRef.current = null;
-    }
-
-    // Stop media stream tracks
-    if (streamRef.current) {
-      console.log("Stopping media stream tracks...");
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
+    socketRef.current?.close();
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    
+    // Flush remaining audio data
+    if (currentSpeakerRef.current && currentSentenceRef.current.length > 0) {
+      const finalSentence = `Speaker ${currentSpeakerRef.current}: ${currentSentenceRef.current.join(' ')}`;
+      setTranscript(prev => (prev + '\n' + finalSentence).trim());
     }
 
     setIsRecording(false);
     setConnectionStatus('Not Connected');
-    console.log("Cleanup complete.");
+    mediaRecorderRef.current = null;
+    socketRef.current = null;
+    streamRef.current = null;
+    speakerMapRef.current = new Map();
+    currentSpeakerRef.current = null;
+    currentSentenceRef.current = [];
   }, []);
 
-  // --- Start Recording ---
+  // Start recording handler
   const startRecording = async () => {
-    console.log("startRecording function called");
-    if (isRecording) {
-      console.warn("Already recording.");
-      return;
-    }
+    if (isRecording) return;
 
-    // Clear previous transcript before starting new recording
+    // Reset tracking for new session
+    speakerMapRef.current = new Map();
+    currentSpeakerRef.current = null;
+    currentSentenceRef.current = [];
     setTranscript('');
     setConnectionStatus('Connecting...');
 
     try {
-      // Check browser support for MediaRecorder and webm format
-      if (!window.MediaRecorder || !MediaRecorder.isTypeSupported('audio/webm')) {
-        alert('Your browser does not support the required audio recording capabilities');
-        setConnectionStatus('Browser not supported');
-        return;
-      }
-
-      // Request microphone access
-      console.log("Requesting microphone access...");
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      console.log("Microphone access granted");
       streamRef.current = stream;
 
-      // Create WebSocket connection to Deepgram
-      console.log("Creating WebSocket connection to Deepgram...");
-      const socket = new WebSocket('wss://api.deepgram.com/v1/listen', [
-        'token',
-        DEEPGRAM_API_KEY
-      ]);
+      const socket = new WebSocket('wss://api.deepgram.com/v1/listen?diarize=true&punctuate=true&utterances=true', 
+        ['token', DEEPGRAM_API_KEY]
+      );
       socketRef.current = socket;
 
-      // Set up WebSocket event handlers
       socket.onopen = () => {
-        console.log("WebSocket connection opened");
         setConnectionStatus('Connected');
-
-        // Create and start MediaRecorder
-        const mediaRecorder = new MediaRecorder(stream, {
-          mimeType: 'audio/webm',
-        });
+        const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
         mediaRecorderRef.current = mediaRecorder;
 
-        // Handle data available event
-        mediaRecorder.addEventListener('dataavailable', async (event) => {
-          if (event.data.size > 0 && socket.readyState === WebSocket.OPEN) {
-            // Send audio data to Deepgram
+        mediaRecorder.addEventListener('dataavailable', (event) => {
+          if (socket.readyState === WebSocket.OPEN && event.data.size > 0) {
             socket.send(event.data);
-            console.log("Sent audio chunk, size:", event.data.size);
           }
         });
 
-        // Start recording, sending data every 1000ms
         mediaRecorder.start(1000);
         setIsRecording(true);
-        console.log("MediaRecorder started");
       };
 
-      // Handle incoming messages (transcription results)
       socket.onmessage = (message) => {
         try {
-          const received = JSON.parse(message.data);
-          console.log("Received message from Deepgram:", received);
-          
-          // Extract transcript from the response
-          if (received.channel && 
-              received.channel.alternatives && 
-              received.channel.alternatives.length > 0) {
+          const data = JSON.parse(message.data);
+          if (!data.is_final || !data.channel?.alternatives?.[0]?.words) return;
+
+          let transcriptChunk = '';
+          const words = data.channel.alternatives[0].words;
+
+          words.forEach((word) => {
+            const deepgramSpeakerId = word.speaker;
             
-            const receivedText = received.channel.alternatives[0].transcript;
-            
-            // Only add non-empty transcripts that are final
-            if (receivedText && received.is_final) {
-              console.log("Final transcript:", receivedText);
-              setTranscript(prev => (prev + ' ' + receivedText).trim());
+            // Map Deepgram speaker ID to sequential number
+            if (!speakerMapRef.current.has(deepgramSpeakerId)) {
+              speakerMapRef.current.set(deepgramSpeakerId, speakerMapRef.current.size + 1);
             }
+            const displaySpeaker = speakerMapRef.current.get(deepgramSpeakerId);
+
+            // Speaker change detection
+            if (displaySpeaker !== currentSpeakerRef.current) {
+              if (currentSpeakerRef.current !== null) {
+                transcriptChunk += `Speaker ${currentSpeakerRef.current}: ${currentSentenceRef.current.join(' ')}\n`;
+              }
+              currentSpeakerRef.current = displaySpeaker;
+              currentSentenceRef.current = [word.punctuated_word || word.word];
+            } else {
+              currentSentenceRef.current.push(word.punctuated_word || word.word);
+            }
+          });
+
+          // Add remaining sentence for current speaker
+          if (currentSpeakerRef.current) {
+            transcriptChunk += `Speaker ${currentSpeakerRef.current}: ${currentSentenceRef.current.join(' ')}`;
+            currentSentenceRef.current = [];
+          }
+
+          if (transcriptChunk) {
+            setTranscript(prev => (prev + '\n' + transcriptChunk).trim());
           }
         } catch (error) {
-          console.error("Error parsing message:", error);
+          console.error('Message processing error:', error);
         }
       };
 
-      // Handle WebSocket closure
-      socket.onclose = (event) => {
-        console.log("WebSocket connection closed:", event);
-        setConnectionStatus(`Disconnected (${event.code})`);
-        setIsRecording(false);
-        
-        // Stop MediaRecorder if it's still running
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-          mediaRecorderRef.current.stop();
-        }
-      };
-
-      // Handle WebSocket errors
-      socket.onerror = (error) => {
-        console.error("WebSocket error:", error);
-        setConnectionStatus('Connection Error');
-        cleanupResources();
-      };
+      socket.onclose = cleanupResources;
+      socket.onerror = () => setConnectionStatus('Connection Error');
 
     } catch (error) {
-      console.error("Error in startRecording:", error);
-      setConnectionStatus(`Error: ${error.message || 'Failed to start'}`);
-      alert(`Failed to start recording: ${error.message || 'Unknown error'}`);
+      console.error('Recording startup error:', error);
+      setConnectionStatus('Connection Failed');
       cleanupResources();
     }
   };
 
-  // --- Stop Recording ---
-  const stopRecording = () => {
-    console.log("stopRecording function called by user");
-    cleanupResources();
+  // Component cleanup
+  useEffect(() => () => cleanupResources(), [cleanupResources]);
+
+  // Handle authentication
+  const handleLogin = () => {
+    if (currentUser) {
+      // Log out if already logged in
+      logout();
+    } else {
+      // Show login screen
+      setAuthView('login');
+    }
+  };
+  
+  const handleAuthSuccess = () => {
+    setAuthView(null);
   };
 
-  // --- Effect for Component Unmount Cleanup ---
-  useEffect(() => {
-    console.log("App component mounted");
-    return () => {
-      console.log("App component unmounting...");
-      cleanupResources();
-    };
-  }, [cleanupResources]);
+  // Render auth screens if the user is trying to log in or sign up
+  if (authView === 'login') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <LoginScreen 
+          onToggleAuth={setAuthView}
+          onLoginSuccess={handleAuthSuccess} 
+        />
+      </div>
+    );
+  }
+  
+  if (authView === 'signup') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <SignupScreen 
+          onToggleAuth={setAuthView}
+          onSignupSuccess={handleAuthSuccess} 
+        />
+      </div>
+    );
+  }
 
   return (
-    <>
-      {/* Navbar */}
-      <nav className="bg-white shadow-sm fixed top-0 left-0 w-full z-10">
-        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <span className="text-2xl font-bold text-blue-600">MeetingSummarizer</span>
-            </div>
-            <div className="flex items-center space-x-4">
-               <span className={`text-sm font-medium px-2 py-1 rounded ${
-                 connectionStatus === 'Connected' ? 'bg-green-100 text-green-800' :
-                 connectionStatus.startsWith('Error') ? 'bg-red-100 text-red-800' :
-                 connectionStatus === 'Connecting...' ? 'bg-yellow-100 text-yellow-800' :
-                 'bg-gray-100 text-gray-800'
-               }`}>
-                 Status: {connectionStatus}
-               </span>
-               <button className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700">
-                 Login
-               </button>
+    <div className="min-h-screen bg-gray-50">
+      <nav className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 py-3">
+          <div className="flex justify-between items-center">
+            <h1 className="text-xl font-bold text-blue-600">Meeting Summarizer</h1>
+            <div className="flex items-center gap-4">
+              <span className={`px-3 py-1 rounded-full text-sm ${
+                connectionStatus === 'Connected' ? 'bg-green-100 text-green-800' :
+                connectionStatus === 'Connecting...' ? 'bg-yellow-100 text-yellow-800' :
+                'bg-gray-100 text-gray-800'
+              }`}>
+                {connectionStatus}
+              </span>
+              {currentUser ? (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium">
+                    {currentUser.profile?.name || currentUser.email}
+                  </span>
+                  <button 
+                    onClick={handleLogin}
+                    className="px-4 py-2 border border-red-600 text-red-600 rounded-md hover:bg-red-50"
+                  >
+                    Logout
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  onClick={handleLogin}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  Login
+                </button>
+              )}
             </div>
           </div>
         </div>
       </nav>
 
-      {/* Main Content */}
-      <main className="min-h-screen bg-gradient-to-b from-blue-50 to-white pt-16 font-sans">
-        {/* Hero Section */}
-        <div className="py-12 w-full">
-          <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center">
-              <h1 className="text-4xl font-extrabold text-gray-900 sm:text-5xl md:text-6xl">
-                <span className="block">Hello!</span>
-                <span className="block text-blue-600">Welcome to Meeting Summarizer</span>
-              </h1>
-              <p className="mt-3 mx-auto text-base text-gray-500 sm:text-lg md:mt-5 md:text-xl">
-                The smart way to summarize and organize your meeting notes
-              </p>
-
-              {/* Transcription Section */}
-              <div className="mt-8 mx-auto max-w-3xl">
-                <div className="bg-white shadow-lg rounded-lg p-6 mb-8">
-                  <h2 className="text-2xl font-semibold mb-4 text-gray-800">Real-time Transcription</h2>
-
-                  {/* Transcription Display */}
-                  <div className="bg-gray-50 border border-gray-200 rounded-md p-4 mb-6 min-h-[200px] max-h-[400px] overflow-y-auto text-left text-gray-700 leading-relaxed">
-                    {transcript ? (
-                      <p>{transcript}</p>
-                    ) : (
-                      <p className="text-gray-400 italic">
-                        {connectionStatus === 'Connected' ? 'Listening... Speak into your microphone.' :
-                         connectionStatus === 'Connecting...' ? 'Connecting to transcription service...' :
-                         connectionStatus.includes('Error') ? 'An error occurred. Please try again.' :
-                         'Click "Start Recording" to begin.'}
-                      </p>
-                    )}
+      <main className="max-w-4xl mx-auto px-4 py-8">
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <div className="mb-6">
+            <h2 className="text-2xl font-semibold mb-4">Live Transcription</h2>
+            <div className="h-96 overflow-y-auto p-4 bg-gray-50 rounded-md">
+              {transcript.split('\n').map((line, index) => (
+                line.includes(':') ? (
+                  <div key={index} className="mb-3 last:mb-0">
+                    <div className="flex items-center mb-1">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-2 ${
+                        parseInt(line.match(/Speaker (\d+)/)?.[1]) % 3 === 0 ? 'bg-purple-100' :
+                        parseInt(line.match(/Speaker (\d+)/)?.[1]) % 3 === 1 ? 'bg-blue-100' : 'bg-green-100'
+                      }`}>
+                        <span className="font-medium text-sm">
+                          {line.split(':')[0].replace('Speaker ', '')}
+                        </span>
+                      </div>
+                      <span className="font-medium text-gray-700">
+                        {line.split(':')[0]}
+                      </span>
+                    </div>
+                    <p className="ml-10 text-gray-600">{line.split(':').slice(1).join(':').trim()}</p>
                   </div>
-
-                  {/* Status Display */}
-                  <div className="mb-4 text-sm">
-                    <span className={`inline-block px-2 py-1 rounded ${
-                      connectionStatus === 'Connected' ? 'bg-green-100 text-green-800' :
-                      connectionStatus.includes('Error') ? 'bg-red-100 text-red-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
-                      Status: {connectionStatus}
-                    </span>
-                  </div>
-
-                  {/* Recording Controls */}
-                  <div className="flex justify-center space-x-4">
-                    {!isRecording ? (
-                      <button 
-                        onClick={startRecording} 
-                        className="px-6 py-3 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center"
-                        disabled={connectionStatus === 'Connecting...'}
-                      >
-                        <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                        </svg>
-                        Start Recording
-                      </button>
-                    ) : (
-                      <button 
-                        onClick={stopRecording} 
-                        className="px-6 py-3 bg-red-600 text-white font-medium rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 flex items-center"
-                      >
-                        <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" />
-                        </svg>
-                        Stop Recording
-                      </button>
-                    )}
-                    
-                    <button 
-                      onClick={() => setTranscript('')} 
-                      className="px-6 py-3 bg-gray-200 text-gray-700 font-medium rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
-                      disabled={isRecording}
-                    >
-                      Clear
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Placeholder Buttons */}
-              <div className="mt-5 mx-auto flex flex-col sm:flex-row justify-center md:mt-8">
-                <div className="rounded-md shadow">
-                  <a href="#" className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 md:py-4 md:text-lg md:px-10">
-                    Get started
-                  </a>
-                </div>
-                <div className="mt-3 rounded-md shadow sm:mt-0 sm:ml-3">
-                  <a href="#" className="w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-blue-600 bg-white hover:bg-gray-50 md:py-4 md:text-lg md:px-10">
-                    Learn more
-                  </a>
-                </div>
-              </div>
+                ) : (
+                  <p key={index} className="text-gray-600 mb-3">{line}</p>
+                )
+              ))}
             </div>
           </div>
-        </div>
 
-        {/* Footer */}
-        <footer className="bg-white mt-auto">
-          <div className="w-full mx-auto py-6 px-4 sm:px-6 lg:px-8">
-            <p className="text-center text-gray-500 text-sm">© {new Date().getFullYear()} Meeting Summarizer. All rights reserved.</p>
+          <div className="flex justify-center gap-4">
+            {!isRecording ? (
+              <button
+                onClick={startRecording}
+                className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
+              >
+                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" />
+                </svg>
+                Start Recording
+              </button>
+            ) : (
+              <button
+                onClick={cleanupResources}
+                className="px-6 py-3 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center"
+              >
+                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" />
+                </svg>
+                Stop Recording
+              </button>
+            )}
+            <button
+              onClick={() => setTranscript('')}
+              className="px-6 py-3 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+              disabled={isRecording}
+            >
+              Clear
+            </button>
           </div>
-        </footer>
+        </div>
       </main>
-    </>
-  )
+
+      <footer className="mt-12 border-t border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <p className="text-center text-sm text-gray-500">
+            © {new Date().getFullYear()} Meeting Summarizer. All rights reserved.
+          </p>
+        </div>
+      </footer>
+    </div>
+  );
 }
 
 export default App;
