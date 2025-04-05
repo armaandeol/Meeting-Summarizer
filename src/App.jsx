@@ -137,116 +137,9 @@ const ControlPanel = ({ isRecording, startRecording, stopRecording, clearTranscr
       </button>
     </div>
     <div className="flex gap-2 justify-center">
-      <button onClick={exportJSON} className="px-4 py-2 bg-gray-600 text-white font-medium rounded-md hover:bg-gray-700 text-sm transition duration-150 ease-in-out shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" disabled={isExporting || !canExport}> Export JSON </button>
+      {/* <button onClick={exportJSON} className="px-4 py-2 bg-gray-600 text-white font-medium rounded-md hover:bg-gray-700 text-sm transition duration-150 ease-in-out shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" disabled={isExporting || !canExport}> Export JSON </button> */}
       <button onClick={exportPDF} className="px-4 py-2 bg-indigo-100 text-indigo-700 font-medium rounded-md hover:bg-indigo-200 text-sm transition duration-150 ease-in-out shadow-sm disabled:opacity-50 disabled:cursor-not-allowed" disabled={isExporting || !canExport}> {isExporting ? 'Generating...' : 'Export PDF'} </button>
     </div>
-  </div>
-);
-
-const ActionItemsList = ({ items, onToggleComplete }) => (
-  <div className="mb-6">
-    <h4 className="font-semibold mb-3 text-base text-gray-700">Action Items (Detected)</h4>
-    <div className="space-y-2 max-h-48 overflow-y-auto pretty-scrollbar pr-2">
-      {items.length === 0 ? ( <p className="text-sm text-gray-500 italic">No action items detected yet</p> ) : (
-        items.slice(0, MAX_ACTION_ITEMS).map((item) => (
-          <div key={item.id} className="flex items-start p-2.5 bg-yellow-50 rounded-lg border border-yellow-200">
-            <input type="checkbox" checked={item.completed} onChange={() => onToggleComplete(item.id)} className="mt-1 mr-3 h-4 w-4 text-yellow-600 border-gray-300 rounded focus:ring-yellow-500 cursor-pointer"/>
-            <div className="flex-1">
-              <p className={`text-sm ${item.completed ? 'line-through text-gray-500' : 'text-gray-800'}`}>{item.text}</p>
-              <p className="text-xs text-gray-500 mt-0.5">Speaker {typeof item.speaker === 'number' ? item.speaker : '?'}</p>
-            </div>
-          </div>
-        ))
-      )}
-       {items.length > MAX_ACTION_ITEMS && <p className="text-xs text-gray-500 text-center mt-2">...and {items.length - MAX_ACTION_ITEMS} more</p>}
-    </div>
-     <style>{`.pretty-scrollbar::-webkit-scrollbar { width: 6px; height: 6px;} .pretty-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 3px;} .pretty-scrollbar::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px;} .pretty-scrollbar::-webkit-scrollbar-thumb:hover { background: #aaa; }`}</style>
-  </div>
-);
-
-const SentimentTimeline = ({ data }) => (
-  <div className="mb-6">
-    <h4 className="font-semibold mb-3 text-base text-gray-700">Sentiment Timeline</h4>
-    <div className="flex overflow-x-auto pb-4 space-x-3 pretty-scrollbar">
-      {data.length === 0 ? ( <p className="text-sm text-gray-500 italic">Sentiment analysis results will appear here...</p> ) : (
-         data.slice(-MAX_SENTIMENT_POINTS).map((point, index) => (
-           <div key={`${point.timestamp || index}`} className="flex-shrink-0 w-36 p-2.5 border border-gray-200 rounded-lg bg-white shadow-sm" title={point.text || 'Sentiment Segment'}>
-             <div className={`h-1.5 w-full mb-2 rounded-full ${
-               point.sentiment === 'positive' ? 'bg-green-500' :
-               point.sentiment === 'negative' ? 'bg-red-500' : 'bg-gray-300'
-             }`} title={`Sentiment: ${point.sentiment} (${point.score?.toFixed(2)})`} />
-             <p className="text-xs text-gray-600 line-clamp-2">{point.text || `Segment ${index}`}</p>
-           </div>
-         ))
-      )}
-       <div className="flex-shrink-0 w-1 h-1"></div>
-    </div>
-     <style>{`.pretty-scrollbar::-webkit-scrollbar { width: 6px; height: 6px;} .pretty-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 3px;} .pretty-scrollbar::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px;} .pretty-scrollbar::-webkit-scrollbar-thumb:hover { background: #aaa; }`}</style>
-  </div>
-);
-
-const TopicCloud = ({ topics }) => (
-  <div className="mb-6">
-    <h4 className="font-semibold mb-3 text-base text-gray-700">Detected Topics</h4>
-    <div className="flex flex-wrap gap-2">
-      {topics.length === 0 ? ( <p className="text-sm text-gray-500 italic">Topics detected by Deepgram will appear here...</p> ) : (
-         Object.entries(
-             topics.reduce((acc, curr) => {
-                 acc[curr.topic] = (acc[curr.topic] || 0) + 1;
-                 return acc;
-             }, {})
-         )
-         .sort(([, countA], [, countB]) => countB - countA)
-         .slice(0, 10)
-         .map(([topic, count]) => (
-           <span key={topic} className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium shadow-sm" title={`Mentioned ${count} time(s)`}>
-             {topic}
-           </span>
-         ))
-      )}
-    </div>
-  </div>
-);
-
-const EntityList = ({ entities }) => (
-  <div className="mb-6">
-    <h4 className="font-semibold mb-3 text-base text-gray-700">Detected Entities</h4>
-     <div className="space-y-1 max-h-40 overflow-y-auto pretty-scrollbar pr-2">
-        {entities.length === 0 ? ( <p className="text-sm text-gray-500 italic">Entities detected by Deepgram will appear here...</p> ) : (
-            entities.map((entity, index) => (
-                <div key={index} className="text-sm p-1.5 bg-gray-50 rounded border border-gray-100">
-                    <span className="font-medium text-gray-700">{entity.value}</span>
-                    <span className="text-xs text-gray-500 ml-2">({entity.label})</span>
-                </div>
-            ))
-        )}
-     </div>
-      <style>{`.pretty-scrollbar::-webkit-scrollbar { width: 6px; height: 6px;} .pretty-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 3px;} .pretty-scrollbar::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px;} .pretty-scrollbar::-webkit-scrollbar-thumb:hover { background: #aaa; }`}</style>
-  </div>
-);
-
-const IntentList = ({ intents }) => (
-  <div className="mb-6">
-    <h4 className="font-semibold mb-3 text-base text-gray-700">Detected Intents</h4>
-     <div className="space-y-1 max-h-40 overflow-y-auto pretty-scrollbar pr-2">
-        {intents.length === 0 ? ( <p className="text-sm text-gray-500 italic">Intents detected by Deepgram will appear here...</p> ) : (
-             Object.entries(
-                 intents.reduce((acc, curr) => {
-                     acc[curr.intent] = (acc[curr.intent] || 0) + 1;
-                     return acc;
-                 }, {})
-             )
-             .sort(([, countA], [, countB]) => countB - countA)
-             .slice(0, 10)
-             .map(([intent, count]) => (
-                <div key={intent} className="text-sm p-1.5 bg-teal-50 rounded border border-teal-100">
-                    <span className="font-medium text-teal-700">{intent}</span>
-                    <span className="text-xs text-teal-500 ml-2">({count}x)</span>
-                </div>
-            ))
-        )}
-     </div>
-      <style>{`.pretty-scrollbar::-webkit-scrollbar { width: 6px; height: 6px;} .pretty-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 3px;} .pretty-scrollbar::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px;} .pretty-scrollbar::-webkit-scrollbar-thumb:hover { background: #aaa; }`}</style>
   </div>
 );
 
@@ -254,9 +147,22 @@ const SummarySection = ({ summary, isLoading }) => (
   <div className="mb-6">
     <h4 className="font-semibold mb-3 text-base text-gray-700">AI Summary (Final)</h4>
     {isLoading ? (
-      <div className="animate-pulse flex space-x-4"><div className="flex-1 space-y-3 py-1"><div className="h-2 bg-gray-200 rounded"></div><div className="space-y-2"><div className="grid grid-cols-3 gap-4"><div className="h-2 bg-gray-200 rounded col-span-2"></div><div className="h-2 bg-gray-200 rounded col-span-1"></div></div><div className="h-2 bg-gray-200 rounded"></div></div></div></div>
+      <div className="animate-pulse flex space-x-4">
+        <div className="flex-1 space-y-3 py-1">
+          <div className="h-2 bg-gray-200 rounded"></div>
+          <div className="space-y-2">
+            <div className="grid grid-cols-3 gap-4">
+              <div className="h-2 bg-gray-200 rounded col-span-2"></div>
+              <div className="h-2 bg-gray-200 rounded col-span-1"></div>
+            </div>
+            <div className="h-2 bg-gray-200 rounded"></div>
+          </div>
+        </div>
+      </div>
     ) : (
-      <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{summary || 'Final summary will appear after recording stops.'}</p>
+      <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+        {summary || 'Final summary will appear after recording stops.'}
+      </p>
     )}
   </div>
 );
@@ -294,21 +200,6 @@ const DeepgramAnalysis = ({ analysisData, isLoading }) => (
           </div>
         )}
         
-        {/* Intents Section */}
-        {analysisData.intents && analysisData.intents.length > 0 && (
-          <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
-            <h4 className="text-sm font-medium text-purple-700 mb-2">Detected Intents</h4>
-            <ul className="text-sm space-y-1">
-              {analysisData.intents.map((intent, index) => (
-                <li key={index} className="flex justify-between">
-                  <span>{intent.intent}</span>
-                  <span className="text-xs text-gray-500">{Math.round(intent.confidence_score * 100)}% confidence</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        
         {/* Sentiment Section */}
         {analysisData.sentiment && (
           <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-100">
@@ -326,6 +217,92 @@ const DeepgramAnalysis = ({ analysisData, isLoading }) => (
     ) : (
       <p className="text-sm text-gray-500 italic">Analysis will be performed after recording and uploading.</p>
     )}
+  </div>
+);
+
+const MainAppContent = ({ 
+  connectionStatus, 
+  currentUser, 
+  handleLoginLogout,
+  searchQuery,
+  setSearchQuery,
+  transcriptEntries,
+  transcriptEndRef,
+  isRecording,
+  startRecording,
+  cleanupResources,
+  clearTranscript,
+  isExporting,
+  exportJSON,
+  exportPDF,
+  canClear,
+  canExport,
+  summary,
+  isSummarizing,
+  deepgramAnalysis,
+  isAnalyzing
+}) => (
+  <div className="min-h-screen bg-gray-100 flex flex-col">
+    <nav className="bg-white shadow-sm sticky top-0 z-20">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-16">
+           <div className="flex-shrink-0 flex items-center"> <svg className="h-8 w-auto text-blue-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8S3 16.418 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /> </svg> <h1 className="text-xl font-bold text-gray-800">AI Meeting Assistant</h1> </div>
+           <div className="flex items-center gap-4">
+             <ConnectionBadge status={connectionStatus} />
+             {currentUser ? (
+               <div className="flex items-center gap-3"> 
+                 <span className="text-sm font-medium text-gray-700 hidden sm:block">{currentUser.displayName || currentUser.email}</span> 
+                 <Link to="/home" className="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition duration-150 ease-in-out">Home</Link>
+                 <button onClick={handleLoginLogout} className="px-3 py-1.5 border border-red-500 text-red-600 text-sm font-medium rounded-md hover:bg-red-50 transition duration-150 ease-in-out">Logout</button> 
+               </div>
+             ) : (
+               <div className="flex gap-2"> 
+                 <button onClick={() => setAuthView('login')} className="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition duration-150 ease-in-out">Login</button> 
+                 <button onClick={() => setAuthView('signup')} className="px-3 py-1.5 border border-blue-600 text-blue-600 text-sm font-medium rounded-md hover:bg-blue-50 transition duration-150 ease-in-out">Sign Up</button> 
+               </div>
+             )}
+           </div>
+        </div>
+      </div>
+    </nav>
+
+    <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 bg-white rounded-lg shadow-lg overflow-hidden">
+                <div className="p-6">
+                    <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
+                        <h2 className="text-2xl font-semibold text-gray-800">Live Transcription</h2>
+                        <SearchInput value={searchQuery} onChange={setSearchQuery} />
+                    </div>
+                    <TranscriptViewer entries={transcriptEntries.filter(e => e.text.toLowerCase().includes(searchQuery.toLowerCase()))} />
+                    <div ref={transcriptEndRef} className="h-1" />
+                    <ControlPanel
+                        isRecording={isRecording} 
+                        startRecording={startRecording} 
+                        stopRecording={cleanupResources}
+                        clearTranscript={clearTranscript} 
+                        isExporting={isExporting} 
+                        exportJSON={exportJSON}
+                        exportPDF={exportPDF} 
+                        canClear={canClear} 
+                        canExport={canExport}
+                    />
+                </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-lg p-6 h-fit lg:sticky lg:top-24">
+                <h2 className="text-xl font-semibold mb-6 text-gray-800 border-b pb-3">Meeting Insights (Deepgram AI)</h2>
+                <SummarySection summary={summary} isLoading={isSummarizing} />
+                <DeepgramAnalysis analysisData={deepgramAnalysis} isLoading={isAnalyzing} />
+            </div>
+        </div>
+    </main>
+
+    <footer className="mt-auto border-t border-gray-200 bg-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <p className="text-center text-sm text-gray-500">© {new Date().getFullYear()} AI Meeting Assistant. All rights reserved.</p>
+      </div>
+    </footer>
   </div>
 );
 
@@ -357,7 +334,7 @@ function App() {
   const speakerMapRef = useRef(new Map());
   const transcriptEndRef = useRef(null);
   const audioChunksRef = useRef([]); // Add a ref to store audio chunks
-  const DEEPGRAM_API_KEY = "API_key";
+  const DEEPGRAM_API_KEY = "API_KEY"; // Replace with your actual Deepgram API key
   const DEBUG_MODE = true; // Set to true for additional logging
   
   console.log("Environment variables loaded:", {
@@ -434,7 +411,6 @@ function App() {
       
       // Save reference in Firestore
       const recordingData = {
-        userId: currentUser.uid,
         fileName: fileName,
         fileURL: downloadURL,
         transcript: transcriptEntries,
@@ -444,16 +420,19 @@ function App() {
         createdAt: serverTimestamp()
       };
       
-      // Add to recordings collection
-      const docRef = await addDoc(collection(db, 'recordings'), recordingData);
-      console.log('Recording saved with ID:', docRef.id);
+      // Use nested collection path: users/{uid}/meetings/{meetingId}
+      const userMeetingsRef = collection(db, 'users', currentUser.uid, 'meetings');
+      
+      // Add to user's meetings subcollection
+      const docRef = await addDoc(userMeetingsRef, recordingData);
+      console.log('Meeting saved with ID:', docRef.id);
       
       // Notify user
-      alert('Recording saved and analyzed successfully!');
+      alert('Meeting saved and analyzed successfully!');
       
     } catch (error) {
-      console.error('Error saving recording:', error);
-      alert('Failed to save recording: ' + error.message);
+      console.error('Error saving meeting:', error);
+      alert('Failed to save meeting: ' + error.message);
     }
   };
 
@@ -936,77 +915,6 @@ function App() {
     return null;
   };
 
-  // Main app content to be used inside the router
-  const MainAppContent = () => (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
-      <nav className="bg-white shadow-sm sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-             <div className="flex-shrink-0 flex items-center"> <svg className="h-8 w-auto text-blue-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8S3 16.418 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /> </svg> <h1 className="text-xl font-bold text-gray-800">AI Meeting Assistant</h1> </div>
-             <div className="flex items-center gap-4">
-               <ConnectionBadge status={connectionStatus} />
-               {currentUser ? (
-                 <div className="flex items-center gap-3"> 
-                   <span className="text-sm font-medium text-gray-700 hidden sm:block">{currentUser.displayName || currentUser.email}</span> 
-                   <Link to="/home" className="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition duration-150 ease-in-out">Home</Link>
-                   <button onClick={handleLoginLogout} className="px-3 py-1.5 border border-red-500 text-red-600 text-sm font-medium rounded-md hover:bg-red-50 transition duration-150 ease-in-out">Logout</button> 
-                 </div>
-               ) : (
-                 <div className="flex gap-2"> 
-                   <button onClick={() => setAuthView('login')} className="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition duration-150 ease-in-out">Login</button> 
-                   <button onClick={() => setAuthView('signup')} className="px-3 py-1.5 border border-blue-600 text-blue-600 text-sm font-medium rounded-md hover:bg-blue-50 transition duration-150 ease-in-out">Sign Up</button> 
-                 </div>
-               )}
-             </div>
-          </div>
-        </div>
-      </nav>
-
-      <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-2 bg-white rounded-lg shadow-lg overflow-hidden">
-                  <div className="p-6">
-                      <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
-                          <h2 className="text-2xl font-semibold text-gray-800">Live Transcription</h2>
-                          <SearchInput value={searchQuery} onChange={setSearchQuery} />
-                      </div>
-                      <TranscriptViewer entries={transcriptEntries.filter(e => e.text.toLowerCase().includes(searchQuery.toLowerCase()))} />
-                      <div ref={transcriptEndRef} className="h-1" />
-                      <ControlPanel
-                          isRecording={isRecording} 
-                          startRecording={startRecording} 
-                          stopRecording={cleanupResources}
-                          clearTranscript={clearTranscript} 
-                          isExporting={isExporting} 
-                          exportJSON={exportJSON}
-                          exportPDF={exportPDF} 
-                          canClear={canClear} 
-                          canExport={canExport}
-                      />
-                  </div>
-              </div>
-
-              <div className="bg-white rounded-lg shadow-lg p-6 h-fit lg:sticky lg:top-24">
-                  <h2 className="text-xl font-semibold mb-6 text-gray-800 border-b pb-3">Meeting Insights (Deepgram AI)</h2>
-                  <SummarySection summary={summary} isLoading={isSummarizing} />
-                  <DeepgramAnalysis analysisData={deepgramAnalysis} isLoading={isAnalyzing} />
-                  <SentimentTimeline data={sentimentData} />
-                  <ActionItemsList items={actionItems} onToggleComplete={toggleActionItemCompletion} />
-                  <TopicCloud topics={topics} />
-                  <EntityList entities={detectedEntities} />
-                  <IntentList intents={detectedIntents} />
-              </div>
-          </div>
-      </main>
-
-      <footer className="mt-auto border-t border-gray-200 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <p className="text-center text-sm text-gray-500">© {new Date().getFullYear()} AI Meeting Assistant. All rights reserved.</p>
-        </div>
-      </footer>
-    </div>
-  );
-
   const authScreen = renderAuthScreen();
   if (authScreen) return authScreen;
 
@@ -1017,7 +925,30 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<MainAppContent />} />
+        <Route path="/" element={
+          <MainAppContent 
+            connectionStatus={connectionStatus}
+            currentUser={currentUser}
+            handleLoginLogout={handleLoginLogout}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            transcriptEntries={transcriptEntries}
+            transcriptEndRef={transcriptEndRef}
+            isRecording={isRecording}
+            startRecording={startRecording}
+            cleanupResources={cleanupResources}
+            clearTranscript={clearTranscript}
+            isExporting={isExporting}
+            exportJSON={exportJSON}
+            exportPDF={exportPDF}
+            canClear={canClear}
+            canExport={canExport}
+            summary={summary}
+            isSummarizing={isSummarizing}
+            deepgramAnalysis={deepgramAnalysis}
+            isAnalyzing={isAnalyzing}
+          />
+        } />
         <Route path="/home" element={<Home />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>

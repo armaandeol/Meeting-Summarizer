@@ -1,11 +1,55 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../firebase'; // Assuming you have this setup
+import { collection, addDoc, serverTimestamp, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { db } from '../../firebase'; 
+import { useAuth } from '../../context/AuthContext'; // Import auth context to get current user
 
 const MeetingSummarizerHomepage = () => {
   const navigate = useNavigate();
   const [isCreating, setIsCreating] = useState(false);
+  const [recentMeetings, setRecentMeetings] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const { currentUser } = useAuth();
+
+  // Fetch recent meetings
+  useEffect(() => {
+    const fetchRecentMeetings = async () => {
+      if (!currentUser) {
+        setIsLoading(false);
+        return;
+      }
+      
+      try {
+        // Create a query against the user's meetings subcollection
+        const meetingsRef = collection(db, 'users', currentUser.uid, 'meetings');
+        const meetingsQuery = query(
+          meetingsRef,
+          orderBy('createdAt', 'desc'),
+          limit(3)
+        );
+        
+        const querySnapshot = await getDocs(meetingsQuery);
+        const meetings = [];
+        
+        querySnapshot.forEach((doc) => {
+          const meetingData = doc.data();
+          console.log("Meeting data:", meetingData); // Debug what's coming from Firestore
+          meetings.push({
+            id: doc.id,
+            ...meetingData
+          });
+        });
+        
+        setRecentMeetings(meetings);
+      } catch (error) {
+        console.error("Error fetching meetings:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchRecentMeetings();
+  }, [currentUser]);
 
   const createNewMeeting = async () => {
     try {
@@ -23,17 +67,82 @@ const MeetingSummarizerHomepage = () => {
         createdAt: serverTimestamp()
       };
 
-      const docRef = await addDoc(collection(db, "meetings"), meetingData);
-      console.log("Meeting created with ID: ", docRef.id);
-      
-      // Navigate to the Meeting page with the new meeting ID
-      navigate(`/meeting/${docRef.id}`);
+      // Update to use the nested collection structure
+      if (currentUser) {
+        const userMeetingsRef = collection(db, "users", currentUser.uid, "meetings");
+        const docRef = await addDoc(userMeetingsRef, meetingData);
+        console.log("Meeting created with ID: ", docRef.id);
+        
+        // Navigate to the Meeting page with the new meeting ID
+        navigate(`/meeting/${docRef.id}`);
+      } else {
+        alert("You must be logged in to create a meeting");
+      }
     } catch (error) {
       console.error("Error creating meeting: ", error);
       alert("Error creating meeting. Please try again.");
     } finally {
       setIsCreating(false);
     }
+  };
+
+  // Function to truncate summary text
+  const truncateSummary = (text, maxLength = 120) => {
+    if (!text) return "No summary available";
+    return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
+  };
+
+  // Function to format date
+  const formatDate = (timestamp) => {
+    if (!timestamp) {
+      return "Date not available";
+    }
+    
+    let date;
+    
+    // Handle Firestore timestamp objects
+    if (timestamp.toDate && typeof timestamp.toDate === 'function') {
+      date = timestamp.toDate();
+    } 
+    // Handle string format like "5 April 2025 at 14:34:37 UTC+5:30"
+    else if (typeof timestamp === 'string') {
+      try {
+        date = new Date(timestamp);
+      } catch (error) {
+        console.error("Error parsing date string:", error);
+        return "Date not available";
+      }
+    } 
+    // If it's already a Date object
+    else if (timestamp instanceof Date) {
+      date = timestamp;
+    }
+    // If it's a number (timestamp)
+    else if (typeof timestamp === 'number') {
+      date = new Date(timestamp);
+    }
+    else {
+      return "Date not available";
+    }
+    
+    // Make sure date is valid
+    if (!(date instanceof Date) || isNaN(date)) {
+      return "Date not available";
+    }
+    
+    return new Intl.DateTimeFormat('en-US', { 
+      month: 'short', 
+      day: 'numeric', 
+      year: 'numeric',
+    }).format(date);
+  };
+
+  // Get display duration
+  const getDisplayDuration = (meeting) => {
+    if (meeting.duration && !isNaN(parseInt(meeting.duration))) {
+      return `${parseInt(meeting.duration)} min`;
+    }
+    return "Duration N/A";
   };
 
   return (
@@ -135,64 +244,65 @@ const MeetingSummarizerHomepage = () => {
           {/* Recent Meetings Section */}
           <h3 className="text-xl font-medium text-gray-800 mb-4">Recent Meetings</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            {/* Meeting Card 1 */}
-            <div className="bg-white rounded-lg shadow-sm p-5 hover:shadow-md transition-shadow">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h4 className="font-medium text-gray-800">Weekly Team Sync</h4>
-                  <p className="text-sm text-gray-500">Apr 4, 2025 • 45 min</p>
+            {isLoading ? (
+              // Loading state
+              Array(3).fill().map((_, index) => (
+                <div key={index} className="bg-white rounded-lg shadow-sm p-5 animate-pulse">
+                  <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                  <div className="h-3 bg-gray-200 rounded w-1/2 mb-4"></div>
+                  <div className="h-12 bg-gray-200 rounded mb-4"></div>
+                  <div className="flex justify-between">
+                    <div className="h-6 bg-gray-200 rounded w-1/4"></div>
+                    <div className="h-6 bg-gray-200 rounded w-1/4"></div>
+                  </div>
                 </div>
-                <span className="bg-green-100 text-green-800 text-xs py-1 px-2 rounded-full">Completed</span>
-              </div>
-              <p className="text-gray-600 text-sm mb-4">Discussed Q2 goals, project timeline updates, and resource allocation for the marketing campaign.</p>
-              <div className="flex justify-between">
-                <div className="flex -space-x-2">
-                  <div className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs">JD</div>
-                  <div className="w-6 h-6 rounded-full bg-pink-500 text-white flex items-center justify-center text-xs">AM</div>
-                  <div className="w-6 h-6 rounded-full bg-yellow-500 text-white flex items-center justify-center text-xs">RK</div>
+              ))
+            ) : recentMeetings.length > 0 ? (
+              recentMeetings.map((meeting) => (
+                <div key={meeting.id} className="bg-white rounded-lg shadow-sm p-5 hover:shadow-md transition-shadow">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h4 className="font-medium text-gray-800">{meeting.title || "Untitled Meeting"}</h4>
+                      <p className="text-sm text-gray-500">
+                        {formatDate(meeting.date || meeting.createdAt)} • {getDisplayDuration(meeting)}
+                      </p>
+                    </div>
+                    <span className="bg-green-100 text-green-800 text-xs py-1 px-2 rounded-full">
+                      {meeting.status || "Completed"}
+                    </span>
+                  </div>
+                  <p className="text-gray-600 text-sm mb-4">{truncateSummary(meeting.summary)}</p>
+                  <div className="flex justify-between">
+                    <div className="flex -space-x-2">
+                      {/* We could show participants here if that data is available */}
+                      <div className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs">
+                        {currentUser?.displayName?.charAt(0) || currentUser?.email?.charAt(0) || 'U'}
+                      </div>
+                    </div>
+                    <a 
+                      href={`/meeting/${meeting.id}`} 
+                      className="text-indigo-600 text-sm hover:text-indigo-800"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        navigate(`/meeting-page/${meeting.id}`);
+                      }}
+                    >
+                      View Summary
+                    </a>
+                  </div>
                 </div>
-                <a href="#" className="text-indigo-600 text-sm hover:text-indigo-800">View Summary</a>
+              ))
+            ) : (
+              <div className="col-span-3 text-center py-10">
+                <p className="text-gray-500 mb-4">You don't have any meetings yet</p>
+                <button 
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-lg"
+                  onClick={createNewMeeting}
+                >
+                  Create Your First Meeting
+                </button>
               </div>
-            </div>
-            
-            {/* Meeting Card 2 */}
-            <div className="bg-white rounded-lg shadow-sm p-5 hover:shadow-md transition-shadow">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h4 className="font-medium text-gray-800">Product Review</h4>
-                  <p className="text-sm text-gray-500">Apr 3, 2025 • 60 min</p>
-                </div>
-                <span className="bg-green-100 text-green-800 text-xs py-1 px-2 rounded-full">Completed</span>
-              </div>
-              <p className="text-gray-600 text-sm mb-4">Reviewed new feature designs, discussed user feedback, and finalized release schedule for v2.5.</p>
-              <div className="flex justify-between">
-                <div className="flex -space-x-2">
-                  <div className="w-6 h-6 rounded-full bg-purple-500 text-white flex items-center justify-center text-xs">LM</div>
-                  <div className="w-6 h-6 rounded-full bg-green-500 text-white flex items-center justify-center text-xs">TS</div>
-                </div>
-                <a href="#" className="text-indigo-600 text-sm hover:text-indigo-800">View Summary</a>
-              </div>
-            </div>
-            
-            {/* Meeting Card 3 */}
-            <div className="bg-white rounded-lg shadow-sm p-5 hover:shadow-md transition-shadow">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h4 className="font-medium text-gray-800">Client Presentation</h4>
-                  <p className="text-sm text-gray-500">Apr 2, 2025 • 90 min</p>
-                </div>
-                <span className="bg-green-100 text-green-800 text-xs py-1 px-2 rounded-full">Completed</span>
-              </div>
-              <p className="text-gray-600 text-sm mb-4">Presented quarterly results, discussed strategy adjustments, and collected feedback for improvement areas.</p>
-              <div className="flex justify-between">
-                <div className="flex -space-x-2">
-                  <div className="w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center text-xs">KP</div>
-                  <div className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-xs">JD</div>
-                  <div className="w-6 h-6 rounded-full bg-gray-500 text-white flex items-center justify-center text-xs">+2</div>
-                </div>
-                <a href="#" className="text-indigo-600 text-sm hover:text-indigo-800">View Summary</a>
-              </div>
-            </div>
+            )}
           </div>
           
           {/* Features Section */}
