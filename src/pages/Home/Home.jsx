@@ -292,11 +292,11 @@ const MeetingSummarizerHomepage = () => {
                       </div>
                     </div>
                     <a 
-                      href={`/meeting-page/${meeting.id}`} 
+                      href={`/summarised-meeting/${meeting.id}`} 
                       className="text-indigo-600 text-sm hover:text-indigo-800"
                       onClick={(e) => {
                         e.preventDefault();
-                        navigate(`/meeting-page/${meeting.id}`);
+                        navigate(`/summarised-meeting/${meeting.id}`);
                       }}
                     >
                       View Summary
