@@ -243,7 +243,8 @@ const MainAppContent = ({
   summary,
   isSummarizing,
   deepgramAnalysis,
-  isAnalyzing
+  isAnalyzing,
+  setAuthView
 }) => (
   <div className="min-h-screen bg-gray-100 flex flex-col">
     <nav className="bg-white shadow-sm sticky top-0 z-20">
@@ -1024,6 +1025,7 @@ function App() {
             isSummarizing={isSummarizing}
             deepgramAnalysis={deepgramAnalysis}
             isAnalyzing={isAnalyzing}
+            setAuthView={setAuthView}
           />
         } />
         <Route path="/home" element={<Home />} />
