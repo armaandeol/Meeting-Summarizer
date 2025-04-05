@@ -14,8 +14,6 @@ import Home from './pages/Home/Home';
 import Meeting_page from './pages/Meeting/Meeting_page';
 import Chat from './pages/Chat/Chat'; // Import the new Chat component
 import TranscriptChatbot from './components/TranscriptChatbot';
-import Chat from './pages/Chat/Chat'; // Import the new Chat component
-import TranscriptChatbot from './components/TranscriptChatbot';
 
 // Simple error boundary component
 class ErrorBoundary extends React.Component {
@@ -245,7 +243,8 @@ const MainAppContent = ({
   summary,
   isSummarizing,
   deepgramAnalysis,
-  isAnalyzing
+  isAnalyzing,
+  setAuthView
 }) => (
   <div className="min-h-screen bg-gray-100 flex flex-col">
     <nav className="bg-white shadow-sm sticky top-0 z-20">
@@ -1026,6 +1025,7 @@ function App() {
             isSummarizing={isSummarizing}
             deepgramAnalysis={deepgramAnalysis}
             isAnalyzing={isAnalyzing}
+            setAuthView={setAuthView}
           />
         } />
         <Route path="/home" element={<Home />} />
