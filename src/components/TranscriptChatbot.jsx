@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { useMemo } from 'react';  // Add missing import
+import { useMemo } from 'react'; 
 
 const TranscriptChatbot = ({ transcriptionData }) => {
   const [messages, setMessages] = useState([]);
@@ -8,16 +8,16 @@ const TranscriptChatbot = ({ transcriptionData }) => {
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
   
-  // Fix model initialization with proper useMemo dependencies
+ 
   const { model } = useMemo(() => {
     const genAI = new GoogleGenerativeAI("Google_API");
     return {
       model: genAI.getGenerativeModel({
-        model: "gemini-1.5-flash-latest",  // Updated to currently available model
-        apiVersion: "v1beta"  // Required version for flash model
+        model: "gemini-1.5-flash-latest", 
+        apiVersion: "v1beta" 
       })
     };
-  }, []);  // Empty dependency array for single initialization
+  }, []); 
   
   // Scroll to bottom of chat when new messages arrive
   useEffect(() => {

@@ -13,6 +13,8 @@ import SignupScreen from './components/SignupScreen';
 import Home from './pages/Home/Home';
 import Meeting_page from './pages/Meeting/Meeting_page';
 import Chat from './pages/Chat/Chat';
+import Summaries from './pages/Summaries/Meet';
+import SummaryPage from './pages/SummarisedMeeting/SummarisedMeeting'
 
 // Hooks
 import { useTranscription } from './hooks/useTranscription';
@@ -98,6 +100,8 @@ function App() {
             onLoginSuccess={() => {
               console.log("Login success callback triggered");
               setAuthView(null);
+              // Redirect to Home page
+              window.location.href = '/home';
             }} 
           />
         </div>
@@ -110,7 +114,9 @@ function App() {
             onToggleAuth={() => setAuthView('login')} 
             onSignupSuccess={() => {
               console.log("Signup success callback triggered");
-              setAuthView('login');
+              setAuthView(null);
+              // Redirect to Home page after signup
+              window.location.href = '/home';
             }} 
           />
         </div>
@@ -129,7 +135,7 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={
+        <Route path="/transcription/:uid" element={
           <MainAppContent 
             connectionStatus={connectionStatus}
             currentUser={currentUser}
@@ -154,9 +160,11 @@ function App() {
             setAuthView={setAuthView}
           />
         } />
-        <Route path="/home" element={<Home />} />
+        <Route path="/" element={<Home />} />
         <Route path="/meeting-page/:id" element={<Meeting_page />} />
         <Route path="/chat/:id" element={<Chat />} />
+        <Route path="/summaries" element={<Summaries />} />
+        <Route path="/summaries/:id" element={<SummaryPage />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>
