@@ -1,6 +1,41 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../firebase'; // Assuming you have this setup
 
 const MeetingSummarizerHomepage = () => {
+  const navigate = useNavigate();
+  const [isCreating, setIsCreating] = useState(false);
+
+  const createNewMeeting = async () => {
+    try {
+      setIsCreating(true);
+      // Create a new meeting document in Firestore
+      const meetingData = {
+        title: "New Meeting",
+        date: serverTimestamp(),
+        duration: 30, // default duration in minutes
+        status: "scheduled",
+        summary: "",
+        intent: "To be discussed",
+        participants: [],
+        actionItems: [],
+        createdAt: serverTimestamp()
+      };
+
+      const docRef = await addDoc(collection(db, "meetings"), meetingData);
+      console.log("Meeting created with ID: ", docRef.id);
+      
+      // Navigate to the Meeting page with the new meeting ID
+      navigate(`/meeting/${docRef.id}`);
+    } catch (error) {
+      console.error("Error creating meeting: ", error);
+      alert("Error creating meeting. Please try again.");
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   return (
     <div className="flex h-screen bg-gray-50 font-sans">
       {/* Left Sidebar */}
@@ -62,9 +97,13 @@ const MeetingSummarizerHomepage = () => {
               <button className="text-gray-500 hover:text-gray-700">
                 <i className="fas fa-bell"></i>
               </button>
-              <button className="bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-lg flex items-center">
+              <button 
+                className="bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-lg flex items-center"
+                onClick={createNewMeeting}
+                disabled={isCreating}
+              >
                 <i className="fas fa-plus mr-2"></i>
-                <span>New Meeting</span>
+                <span>{isCreating ? "Creating..." : "New Meeting"}</span>
               </button>
             </div>
           </div>

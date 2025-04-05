@@ -357,7 +357,7 @@ function App() {
   const speakerMapRef = useRef(new Map());
   const transcriptEndRef = useRef(null);
   const audioChunksRef = useRef([]); // Add a ref to store audio chunks
-  const DEEPGRAM_API_KEY = '16dcb20c07a4be54791de06f5059e9c412284862'; // Fixed API key
+  const DEEPGRAM_API_KEY = "API_key";
   const DEBUG_MODE = true; // Set to true for additional logging
   
   console.log("Environment variables loaded:", {
