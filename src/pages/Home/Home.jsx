@@ -189,8 +189,8 @@ const MeetingSummarizerHomepage = () => {
               <span className="font-bold text-white">JD</span>
             </div>
             <div className="ml-3">
-              <p className="font-medium">John Doe</p>
-              <p className="text-xs text-indigo-200">john@meetsum.ai</p>
+              <p className="font-medium">{currentUser?.displayName || 'User'}</p>
+              <p className="text-xs text-indigo-200">{currentUser?.email || 'No email'}</p>
             </div>
           </div>
         </div>

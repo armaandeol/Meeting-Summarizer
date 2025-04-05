@@ -12,6 +12,8 @@ import { createClient } from "@deepgram/sdk";
 import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
 import Home from './pages/Home/Home';
 import Meeting_page from './pages/Meeting/Meeting_page';
+import Chat from './pages/Chat/Chat'; // Import the new Chat component
+import TranscriptChatbot from './components/TranscriptChatbot';
 
 // Simple error boundary component
 class ErrorBoundary extends React.Component {
@@ -295,6 +297,18 @@ const MainAppContent = ({
                 <h2 className="text-xl font-semibold mb-6 text-gray-800 border-b pb-3">Meeting Insights (Deepgram AI)</h2>
                 <SummarySection summary={summary} isLoading={isSummarizing} />
                 <DeepgramAnalysis analysisData={deepgramAnalysis} isLoading={isAnalyzing} />
+                
+                {/* Remove the conditional rendering to make the chatbot always visible */}
+                <div className="mt-6 pt-6 border-t border-gray-200">
+                  <h2 className="text-xl font-semibold mb-4 text-gray-800">Chat with AI</h2>
+                  <div className="h-96">
+                    <TranscriptChatbot transcriptionData={{
+                      transcript: transcriptEntries,
+                      summary: summary,
+                      topics: deepgramAnalysis?.topics || []
+                    }} />
+                  </div>
+                </div>
             </div>
         </div>
     </main>
@@ -308,178 +322,6 @@ const MainAppContent = ({
 );
 
 // --- Main App Component ---
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { saveAs } from 'file-saver';
-import { PDFDocument, StandardFonts } from 'pdf-lib';
-import './App.css';
-import { useAuth } from './context/AuthContext';
-import LoginScreen from './components/LoginScreen';
-import SignupScreen from './components/SignupScreen';
-
-// Sub-components
-const ConnectionBadge = ({ status }) => (
-  <span className={`px-3 py-1 rounded-full text-sm ${
-    status === 'Connected' ? 'bg-green-100 text-green-800' :
-    status === 'Connecting...' ? 'bg-yellow-100 text-yellow-800' :
-    'bg-gray-100 text-gray-800'
-  }`}>
-    {status}
-  </span>
-);
-
-const SearchInput = ({ value, onChange }) => (
-  <input
-    type="text"
-    placeholder="Search transcript..."
-    className="w-48 px-3 py-1 border rounded-md text-sm"
-    value={value}
-    onChange={(e) => onChange(e.target.value)}
-  />
-);
-
-const SpeakerBadge = ({ speaker }) => (
-  <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-2 ${
-    speaker % 3 === 0 ? 'bg-purple-100' :
-    speaker % 3 === 1 ? 'bg-blue-100' : 'bg-green-100'
-  }`}>
-    <span className="font-medium text-sm">{speaker}</span>
-  </div>
-);
-
-const TranscriptViewer = ({ entries }) => (
-  <div className="h-96 overflow-y-auto p-4 bg-gray-50 rounded-md">
-    {entries.map((entry, index) => (
-      <div key={index} className="mb-3 last:mb-0">
-        <div className="flex items-center mb-1">
-          <SpeakerBadge speaker={entry.speaker} />
-          <span className="font-medium text-gray-700">
-            Speaker {entry.speaker}
-          </span>
-        </div>
-        <p className="ml-10 text-gray-600">{entry.text}</p>
-      </div>
-    ))}
-  </div>
-);
-
-const ControlPanel = ({ isRecording, startRecording, stopRecording, isExporting, exportJSON, exportPDF }) => (
-  <div className="flex justify-center gap-4">
-    {!isRecording ? (
-      <button
-        onClick={startRecording}
-        className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
-      >
-        <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" />
-        </svg>
-        Start Recording
-      </button>
-    ) : (
-      <button
-        onClick={stopRecording}
-        className="px-6 py-3 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center"
-      >
-        <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" />
-        </svg>
-        Stop Recording
-      </button>
-    )}
-    
-    <div className="flex gap-2">
-      <button
-        onClick={exportJSON}
-        className="px-4 py-2 bg-gray-200 rounded-md hover:bg-gray-300 text-sm"
-        disabled={isExporting}
-      >
-        Export JSON
-      </button>
-      <button
-        onClick={exportPDF}
-        className="px-4 py-2 bg-blue-100 rounded-md hover:bg-blue-200 text-sm"
-        disabled={isExporting}
-      >
-        {isExporting ? 'Generating...' : 'Export PDF'}
-      </button>
-    </div>
-  </div>
-);
-
-const ActionItemsList = ({ items, onToggleComplete }) => (
-  <div className="mb-6">
-    <h4 className="font-medium mb-2">Action Items</h4>
-    <div className="space-y-2">
-      {items.length === 0 ? (
-        <p className="text-sm text-gray-500">No action items detected yet</p>
-      ) : (
-        items.map((item) => (
-          <div key={item.id} className="flex items-start p-2 bg-yellow-50 rounded-lg">
-            <input
-              type="checkbox"
-              checked={item.completed}
-              onChange={() => onToggleComplete(item.id)}
-              className="mt-1 mr-3"
-            />
-            <div>
-              <p className="text-sm">{item.text}</p>
-              <p className="text-xs text-gray-500">Speaker {item.speaker}</p>
-            </div>
-          </div>
-        ))
-      )}
-    </div>
-  </div>
-);
-
-const SentimentTimeline = ({ data }) => (
-  <div className="mb-6">
-    <h4 className="font-medium mb-2">Sentiment Timeline</h4>
-    <div className="flex overflow-x-auto pb-4">
-      {data.slice(-10).map((point, index) => (
-        <div 
-          key={index}
-          className="flex-shrink-0 w-32 p-2 mr-3 border rounded-lg bg-white"
-        >
-          <div className={`h-1 w-full mb-2 rounded-full ${
-            point.sentiment === 'POSITIVE' ? 'bg-green-500' :
-            point.sentiment === 'NEGATIVE' ? 'bg-red-500' : 'bg-gray-300'
-          }`} />
-          <p className="text-xs truncate text-gray-600">{point.text}</p>
-        </div>
-      ))}
-    </div>
-  </div>
-);
-
-const TopicCloud = ({ topics }) => (
-  <div className="mb-6">
-    <h4 className="font-medium mb-2">Key Topics</h4>
-    <div className="flex flex-wrap gap-2">
-      {topics.map((topic, index) => (
-        <span 
-          key={index}
-          className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
-        >
-          {topic.label} ({topic.score})
-        </span>
-      ))}
-    </div>
-  </div>
-);
-
-const Footer = () => (
-  <footer className="mt-12 border-t border-gray-200">
-    <div className="max-w-7xl mx-auto px-4 py-6">
-      <p className="text-center text-sm text-gray-500">
-        ©️ {new Date().getFullYear()} Meeting Assistant. All rights reserved.
-      </p>
-    </div>
-  </footer>
-);
-
-// Main App Component
-const DEEPGRAM_API_KEY = '16dcb20c07a4be54791de06f5059e9c412284862';
-
 function App() {
   console.log("App component rendering");
   
@@ -507,7 +349,7 @@ function App() {
   const speakerMapRef = useRef(new Map());
   const transcriptEndRef = useRef(null);
   const audioChunksRef = useRef([]); // Add a ref to store audio chunks
-  const DEEPGRAM_API_KEY = "API_KEY"; // Replace with your actual Deepgram API key
+  const DEEPGRAM_API_KEY = "API_Key"; // Replace with your actual Deepgram API key
   const DEBUG_MODE = true; // Set to true for additional logging
   
   console.log("Environment variables loaded:", {
@@ -821,15 +663,25 @@ function App() {
 
     try { 
       console.log('Start Recording: Requesting media permissions...');
+      // Add more detailed constraints for better browser compatibility
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: { 
           echoCancellation: true, 
           noiseSuppression: true, 
-          autoGainControl: true 
+          autoGainControl: true,
+          sampleRate: 44100,
+          channelCount: 1
         } 
       });
       streamRef.current = stream;
       console.log('Start Recording: Media permissions granted.');
+
+      // Check if we actually got audio tracks
+      if (stream.getAudioTracks().length === 0) {
+        throw new Error('No audio track available in the media stream');
+      }
+      
+      console.log('Audio tracks:', stream.getAudioTracks().length);
 
       const params = new URLSearchParams({
           model: 'nova-2',
@@ -840,41 +692,85 @@ function App() {
       });
       const wsUrl = `wss://api.deepgram.com/v1/listen?${params.toString()}`;
       console.log('Start Recording: Connecting to WebSocket:', wsUrl);
-      const socket = new WebSocket(wsUrl, ['token', DEEPGRAM_API_KEY]);
+      
+      // Add a timeout for WebSocket connection
+      const socketPromise = new Promise((resolve, reject) => {
+        const socket = new WebSocket(wsUrl, ['token', DEEPGRAM_API_KEY]);
+        const timeout = setTimeout(() => {
+          reject(new Error('WebSocket connection timeout'));
+        }, 10000); // 10 seconds timeout
+        
+        socket.onopen = () => {
+          clearTimeout(timeout);
+          resolve(socket);
+        };
+        
+        socket.onerror = (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        };
+      });
+      
+      const socket = await socketPromise;
       socketRef.current = socket;
 
-      socket.onopen = () => { 
-        console.log('WebSocket: Connection established.');
-        setConnectionStatus('Connected');
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
-        console.log(`Using MIME type: ${mimeType}`);
-        if (!MediaRecorder.isTypeSupported(mimeType)) { 
-          throw new Error(`Unsupported MIME type: ${mimeType}`); 
+      console.log('WebSocket: Connection established.');
+      setConnectionStatus('Connected');
+      
+      // Check for supported MIME types
+      const mimeTypes = ['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/wav'];
+      let selectedMimeType = null;
+      
+      for (const type of mimeTypes) {
+        if (MediaRecorder.isTypeSupported(type)) {
+          selectedMimeType = type;
+          break;
         }
-        const mediaRecorder = new MediaRecorder(stream, { mimeType });
-        mediaRecorderRef.current = mediaRecorder;
+      }
+      
+      if (!selectedMimeType) {
+        throw new Error('No supported MIME type found for MediaRecorder');
+      }
+      
+      console.log(`Using MIME type: ${selectedMimeType}`);
+      
+      const mediaRecorder = new MediaRecorder(stream, { 
+        mimeType: selectedMimeType,
+        audioBitsPerSecond: 128000 
+      });
+      mediaRecorderRef.current = mediaRecorder;
 
-        mediaRecorder.addEventListener('dataavailable', (event) => {
-          if (event.data.size > 0) {
-            // Store audio chunks for later saving
-            audioChunksRef.current.push(event.data);
-            
-            // Send to WebSocket for transcription
-            if (socketRef.current?.readyState === WebSocket.OPEN) {
-              socketRef.current.send(event.data);
-            }
+      mediaRecorder.addEventListener('dataavailable', (event) => {
+        if (event.data.size > 0) {
+          console.log(`Audio data received: ${event.data.size} bytes`);
+          // Store audio chunks for later saving
+          audioChunksRef.current.push(event.data);
+          
+          // Send to WebSocket for transcription
+          if (socketRef.current?.readyState === WebSocket.OPEN) {
+            socketRef.current.send(event.data);
+          } else {
+            console.warn('WebSocket not open when trying to send audio data');
           }
-        });
-        
-        mediaRecorder.onerror = (event) => { 
-          console.error("MediaRecorder Error:", event.error); 
-          setConnectionStatus('Error: MediaRecorder'); 
-          cleanupResources(); 
-        };
+        } else {
+          console.warn('Empty audio data received');
+        }
+      });
+      
+      mediaRecorder.onerror = (event) => { 
+        console.error("MediaRecorder Error:", event.error); 
+        setConnectionStatus('Error: MediaRecorder'); 
+        cleanupResources(); 
+      };
 
-        mediaRecorder.start(250);
-        setIsRecording(true);
-        console.log('Start Recording: MediaRecorder started.');
+      // Add start event handler
+      mediaRecorder.onstart = () => {
+        console.log('MediaRecorder started successfully');
+      };
+
+      // Add stop event handler
+      mediaRecorder.onstop = () => {
+        console.log('MediaRecorder stopped');
       };
 
       socket.onmessage = handleMessage;
@@ -893,10 +789,18 @@ function App() {
         cleanupResources(); 
       };
 
+      // Start recording with smaller time slices for more frequent data
+      mediaRecorder.start(250);
+      setIsRecording(true);
+      console.log('Start Recording: MediaRecorder started.');
+
     } catch (error) {
       console.error('Start Recording Error:', error); 
       setConnectionStatus(`Error: ${error.name === 'NotAllowedError' ? 'Permission Denied' : error.message}`);
       cleanupResources();
+      
+      // Show a more detailed error message to the user
+      alert(`Failed to start recording: ${error.message}. Please check your microphone permissions and try again.`);
     }
   }, [isRecording, connectionStatus, cleanupResources, handleMessage, DEEPGRAM_API_KEY]);
 
@@ -1124,6 +1028,7 @@ function App() {
         } />
         <Route path="/home" element={<Home />} />
         <Route path="/meeting-page/:id" element={<Meeting_page />} />
+        <Route path="/chat/:id" element={<Chat />} /> {/* Add the new Chat route */}
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>
