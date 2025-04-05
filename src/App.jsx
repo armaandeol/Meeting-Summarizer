@@ -349,13 +349,33 @@ function App() {
   const streamRef = useRef(null);
   const speakerMapRef = useRef(new Map());
   const transcriptEndRef = useRef(null);
-  const audioChunksRef = useRef([]); // Add a ref to store audio chunks
-  const DEEPGRAM_API_KEY = "API_Key"; // Replace with your actual Deepgram API key
-  const DEBUG_MODE = true; // Set to true for additional logging
+  const audioChunksRef = useRef([]);
+  const DEEPGRAM_API_KEY = import.meta.env.VITE_DEEPGRAM_API_KEY  
+  const DEBUG_MODE = true;
+  
+  const checkMicrophoneAvailability = async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const audioInputs = devices.filter(device => device.kind === 'audioinput');
+      console.log('Available audio input devices:', audioInputs.length);
+      
+      if (audioInputs.length === 0) {
+        return { available: false, message: 'No microphone detected on this device.' };
+      }
+      return { available: true };
+    } catch (error) {
+      console.error('Error checking audio devices:', error);
+      return { 
+        available: false, 
+        message: error.message || 'Unable to check microphone availability' 
+      };
+    }
+  };
   
   console.log("Environment variables loaded:", {
     hasDeepgramKey: Boolean(DEEPGRAM_API_KEY),
-    keyLength: DEEPGRAM_API_KEY?.length || 0
+    keyLength: DEEPGRAM_API_KEY?.length || 0,
+    apiKeyFirstChars: DEEPGRAM_API_KEY ? `${DEEPGRAM_API_KEY.substring(0, 5)}...` : 'undefined'
   });
 
   const cleanupResources = useCallback(async () => {
@@ -662,6 +682,14 @@ function App() {
         setConnectionStatus('Error: API Key Missing'); return; 
     }
 
+    // Add preliminary check for microphone
+    const micCheck = await checkMicrophoneAvailability();
+    if (!micCheck.available) {
+      alert(`Microphone check failed: ${micCheck.message}`);
+      setConnectionStatus('Error: No Microphone');
+      return;
+    }
+
     try { 
       console.log('Start Recording: Requesting media permissions...');
       // Add more detailed constraints for better browser compatibility
@@ -683,6 +711,7 @@ function App() {
       }
       
       console.log('Audio tracks:', stream.getAudioTracks().length);
+      console.log('Audio track settings:', stream.getAudioTracks()[0].getSettings());
 
       const params = new URLSearchParams({
           model: 'nova-2',
@@ -796,12 +825,36 @@ function App() {
       console.log('Start Recording: MediaRecorder started.');
 
     } catch (error) {
-      console.error('Start Recording Error:', error); 
-      setConnectionStatus(`Error: ${error.name === 'NotAllowedError' ? 'Permission Denied' : error.message}`);
+      console.error('Start Recording Error:', error);
+      
+      // Improved error handling with better diagnostics
+      let errorMessage = 'Unknown error';
+      
+      if (error.name === 'NotAllowedError') {
+        errorMessage = 'Permission denied. Please allow microphone access in your browser settings.';
+      } else if (error.name === 'NotFoundError') {
+        errorMessage = 'No microphone found. Please connect a microphone and try again.';
+      } else if (error.name === 'NotReadableError' || error.name === 'AbortError') {
+        errorMessage = 'Could not access your microphone. It might be in use by another application.';
+      } else if (error.name === 'SecurityError') {
+        errorMessage = 'Media access is not allowed in this context due to security restrictions.';
+      } else if (error.name === 'TypeError') {
+        errorMessage = 'Media constraints are not valid or not supported by this browser.';
+      } else {
+        errorMessage = error.message || 'Failed to access microphone for unknown reasons.';
+      }
+      
+      setConnectionStatus(`Error: ${error.name || 'Access Failed'}`);
       cleanupResources();
       
       // Show a more detailed error message to the user
-      alert(`Failed to start recording: ${error.message}. Please check your microphone permissions and try again.`);
+      alert(`Failed to start recording: ${errorMessage}`);
+      
+      // Add additional debug info to console
+      console.log('Browser:', navigator.userAgent);
+      console.log('Error name:', error.name);
+      console.log('Error message:', error.message);
+      console.log('Error stack:', error.stack);
     }
   }, [isRecording, connectionStatus, cleanupResources, handleMessage, DEEPGRAM_API_KEY]);
 
