@@ -308,6 +308,178 @@ const MainAppContent = ({
 );
 
 // --- Main App Component ---
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { saveAs } from 'file-saver';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
+import './App.css';
+import { useAuth } from './context/AuthContext';
+import LoginScreen from './components/LoginScreen';
+import SignupScreen from './components/SignupScreen';
+
+// Sub-components
+const ConnectionBadge = ({ status }) => (
+  <span className={`px-3 py-1 rounded-full text-sm ${
+    status === 'Connected' ? 'bg-green-100 text-green-800' :
+    status === 'Connecting...' ? 'bg-yellow-100 text-yellow-800' :
+    'bg-gray-100 text-gray-800'
+  }`}>
+    {status}
+  </span>
+);
+
+const SearchInput = ({ value, onChange }) => (
+  <input
+    type="text"
+    placeholder="Search transcript..."
+    className="w-48 px-3 py-1 border rounded-md text-sm"
+    value={value}
+    onChange={(e) => onChange(e.target.value)}
+  />
+);
+
+const SpeakerBadge = ({ speaker }) => (
+  <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-2 ${
+    speaker % 3 === 0 ? 'bg-purple-100' :
+    speaker % 3 === 1 ? 'bg-blue-100' : 'bg-green-100'
+  }`}>
+    <span className="font-medium text-sm">{speaker}</span>
+  </div>
+);
+
+const TranscriptViewer = ({ entries }) => (
+  <div className="h-96 overflow-y-auto p-4 bg-gray-50 rounded-md">
+    {entries.map((entry, index) => (
+      <div key={index} className="mb-3 last:mb-0">
+        <div className="flex items-center mb-1">
+          <SpeakerBadge speaker={entry.speaker} />
+          <span className="font-medium text-gray-700">
+            Speaker {entry.speaker}
+          </span>
+        </div>
+        <p className="ml-10 text-gray-600">{entry.text}</p>
+      </div>
+    ))}
+  </div>
+);
+
+const ControlPanel = ({ isRecording, startRecording, stopRecording, isExporting, exportJSON, exportPDF }) => (
+  <div className="flex justify-center gap-4">
+    {!isRecording ? (
+      <button
+        onClick={startRecording}
+        className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center"
+      >
+        <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" />
+        </svg>
+        Start Recording
+      </button>
+    ) : (
+      <button
+        onClick={stopRecording}
+        className="px-6 py-3 bg-red-600 text-white rounded-md hover:bg-red-700 flex items-center"
+      >
+        <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" />
+        </svg>
+        Stop Recording
+      </button>
+    )}
+    
+    <div className="flex gap-2">
+      <button
+        onClick={exportJSON}
+        className="px-4 py-2 bg-gray-200 rounded-md hover:bg-gray-300 text-sm"
+        disabled={isExporting}
+      >
+        Export JSON
+      </button>
+      <button
+        onClick={exportPDF}
+        className="px-4 py-2 bg-blue-100 rounded-md hover:bg-blue-200 text-sm"
+        disabled={isExporting}
+      >
+        {isExporting ? 'Generating...' : 'Export PDF'}
+      </button>
+    </div>
+  </div>
+);
+
+const ActionItemsList = ({ items, onToggleComplete }) => (
+  <div className="mb-6">
+    <h4 className="font-medium mb-2">Action Items</h4>
+    <div className="space-y-2">
+      {items.length === 0 ? (
+        <p className="text-sm text-gray-500">No action items detected yet</p>
+      ) : (
+        items.map((item) => (
+          <div key={item.id} className="flex items-start p-2 bg-yellow-50 rounded-lg">
+            <input
+              type="checkbox"
+              checked={item.completed}
+              onChange={() => onToggleComplete(item.id)}
+              className="mt-1 mr-3"
+            />
+            <div>
+              <p className="text-sm">{item.text}</p>
+              <p className="text-xs text-gray-500">Speaker {item.speaker}</p>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  </div>
+);
+
+const SentimentTimeline = ({ data }) => (
+  <div className="mb-6">
+    <h4 className="font-medium mb-2">Sentiment Timeline</h4>
+    <div className="flex overflow-x-auto pb-4">
+      {data.slice(-10).map((point, index) => (
+        <div 
+          key={index}
+          className="flex-shrink-0 w-32 p-2 mr-3 border rounded-lg bg-white"
+        >
+          <div className={`h-1 w-full mb-2 rounded-full ${
+            point.sentiment === 'POSITIVE' ? 'bg-green-500' :
+            point.sentiment === 'NEGATIVE' ? 'bg-red-500' : 'bg-gray-300'
+          }`} />
+          <p className="text-xs truncate text-gray-600">{point.text}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const TopicCloud = ({ topics }) => (
+  <div className="mb-6">
+    <h4 className="font-medium mb-2">Key Topics</h4>
+    <div className="flex flex-wrap gap-2">
+      {topics.map((topic, index) => (
+        <span 
+          key={index}
+          className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+        >
+          {topic.label} ({topic.score})
+        </span>
+      ))}
+    </div>
+  </div>
+);
+
+const Footer = () => (
+  <footer className="mt-12 border-t border-gray-200">
+    <div className="max-w-7xl mx-auto px-4 py-6">
+      <p className="text-center text-sm text-gray-500">
+        ©️ {new Date().getFullYear()} Meeting Assistant. All rights reserved.
+      </p>
+    </div>
+  </footer>
+);
+
+// Main App Component
+const DEEPGRAM_API_KEY = '16dcb20c07a4be54791de06f5059e9c412284862';
+
 function App() {
   console.log("App component rendering");
   
