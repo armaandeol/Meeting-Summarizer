@@ -349,7 +349,7 @@ function App() {
   const speakerMapRef = useRef(new Map());
   const transcriptEndRef = useRef(null);
   const audioChunksRef = useRef([]); // Add a ref to store audio chunks
-  const DEEPGRAM_API_KEY = "API_Key"; // Replace with your actual Deepgram API key
+  const DEEPGRAM_API_KEY = import.meta.env.VITE_DEEPGRAM_API_KEY || ""; // Load from environment variables
   const DEBUG_MODE = true; // Set to true for additional logging
   
   console.log("Environment variables loaded:", {
