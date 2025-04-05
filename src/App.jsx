@@ -9,6 +9,8 @@ import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'fire
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from './firebase'; // Corrected import path to local firebase.js
 import { createClient } from "@deepgram/sdk";
+import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
+import Home from './pages/Home/Home';
 
 // Simple error boundary component
 class ErrorBoundary extends React.Component {
@@ -355,7 +357,7 @@ function App() {
   const speakerMapRef = useRef(new Map());
   const transcriptEndRef = useRef(null);
   const audioChunksRef = useRef([]); // Add a ref to store audio chunks
-  const DEEPGRAM_API_KEY = 'API_KEY'; // Fixed API key
+  const DEEPGRAM_API_KEY = '16dcb20c07a4be54791de06f5059e9c412284862'; // Fixed API key
   const DEBUG_MODE = true; // Set to true for additional logging
   
   console.log("Environment variables loaded:", {
@@ -892,6 +894,7 @@ function App() {
         console.log('Auth: User logged out.');
       } catch (error) {
         console.error("Logout failed:", error);
+        alert("Failed to log out. Please try again.");
       }
     } else {
       setAuthView('login');
@@ -903,24 +906,26 @@ function App() {
       if (authView === 'login') {
         return (
           <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-            <Suspense fallback={<div>Loading login screen...</div>}>
-              <LoginScreen 
-                onToggleAuth={() => setAuthView('signup')} 
-                onSuccess={() => setAuthView(null)} 
-              />
-            </Suspense>
+            <LoginScreen 
+              onToggleAuth={() => setAuthView('signup')} 
+              onLoginSuccess={() => {
+                console.log("Login success callback triggered");
+                setAuthView(null);
+              }} 
+            />
           </div>
         );
       }
       if (authView === 'signup') {
         return (
           <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-            <Suspense fallback={<div>Loading signup screen...</div>}>
-              <SignupScreen 
-                onToggleAuth={() => setAuthView('login')} 
-                onSuccess={() => setAuthView(null)} 
-              />
-            </Suspense>
+            <SignupScreen 
+              onToggleAuth={() => setAuthView('login')} 
+              onSignupSuccess={() => {
+                console.log("Signup success callback triggered");
+                setAuthView('login');
+              }} 
+            />
           </div>
         );
       }
@@ -931,19 +936,28 @@ function App() {
     return null;
   };
 
-  const authScreen = renderAuthScreen();
-  if (authScreen) return authScreen;
-
-  const canClear = transcriptEntries.length > 0 || actionItems.length > 0 || topics.length > 0 || summary.length > 0 || detectedEntities.length > 0 || detectedIntents.length > 0;
-  const canExport = transcriptEntries.length > 0;
-
-  return (
+  // Main app content to be used inside the router
+  const MainAppContent = () => (
     <div className="min-h-screen bg-gray-100 flex flex-col">
       <nav className="bg-white shadow-sm sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
              <div className="flex-shrink-0 flex items-center"> <svg className="h-8 w-auto text-blue-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"> <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8S3 16.418 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /> </svg> <h1 className="text-xl font-bold text-gray-800">AI Meeting Assistant</h1> </div>
-             <div className="flex items-center gap-4"> <ConnectionBadge status={connectionStatus} /> {currentUser ? (<div className="flex items-center gap-3"> <span className="text-sm font-medium text-gray-700 hidden sm:block">{currentUser.displayName || currentUser.email}</span> <button onClick={handleLoginLogout} className="px-3 py-1.5 border border-red-500 text-red-600 text-sm font-medium rounded-md hover:bg-red-50 transition duration-150 ease-in-out">Logout</button> </div>) : (<div className="flex gap-2"> <button onClick={() => setAuthView('login')} className="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition duration-150 ease-in-out">Login</button> <button onClick={() => setAuthView('signup')} className="px-3 py-1.5 border border-blue-600 text-blue-600 text-sm font-medium rounded-md hover:bg-blue-50 transition duration-150 ease-in-out">Sign Up</button> </div>)} </div>
+             <div className="flex items-center gap-4">
+               <ConnectionBadge status={connectionStatus} />
+               {currentUser ? (
+                 <div className="flex items-center gap-3"> 
+                   <span className="text-sm font-medium text-gray-700 hidden sm:block">{currentUser.displayName || currentUser.email}</span> 
+                   <Link to="/home" className="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition duration-150 ease-in-out">Home</Link>
+                   <button onClick={handleLoginLogout} className="px-3 py-1.5 border border-red-500 text-red-600 text-sm font-medium rounded-md hover:bg-red-50 transition duration-150 ease-in-out">Logout</button> 
+                 </div>
+               ) : (
+                 <div className="flex gap-2"> 
+                   <button onClick={() => setAuthView('login')} className="px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition duration-150 ease-in-out">Login</button> 
+                   <button onClick={() => setAuthView('signup')} className="px-3 py-1.5 border border-blue-600 text-blue-600 text-sm font-medium rounded-md hover:bg-blue-50 transition duration-150 ease-in-out">Sign Up</button> 
+                 </div>
+               )}
+             </div>
           </div>
         </div>
       </nav>
@@ -991,6 +1005,23 @@ function App() {
         </div>
       </footer>
     </div>
+  );
+
+  const authScreen = renderAuthScreen();
+  if (authScreen) return authScreen;
+
+  const canClear = transcriptEntries.length > 0 || actionItems.length > 0 || topics.length > 0 || summary.length > 0 || detectedEntities.length > 0 || detectedIntents.length > 0;
+  const canExport = transcriptEntries.length > 0;
+
+  // Setup routes with Router
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<MainAppContent />} />
+        <Route path="/home" element={<Home />} />
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+    </Router>
   );
 }
 

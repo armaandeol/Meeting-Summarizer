@@ -31,4 +31,5 @@ dist-ssr
 .env.test.local
 .env.production.local
 
-./src/firebase.js
+
+src/firebase.js

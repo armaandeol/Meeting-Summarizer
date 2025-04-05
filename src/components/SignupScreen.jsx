@@ -15,6 +15,10 @@ const SignupScreen = ({ onToggleAuth, onSignupSuccess }) => {
     setError('');
     
     // Validate inputs
+    if (!name.trim()) {
+      return setError('Name is required');
+    }
+    
     if (password !== confirmPassword) {
       return setError('Passwords do not match');
     }
@@ -26,14 +30,20 @@ const SignupScreen = ({ onToggleAuth, onSignupSuccess }) => {
     setLoading(true);
     
     try {
+      console.log("Attempting signup for:", email);
       await signup(email, password, name);
+      console.log("Signup successful, calling onSignupSuccess callback");
       onSignupSuccess?.();
     } catch (err) {
+      console.error("Signup error in component:", err);
       if (err.code === 'auth/email-already-in-use') {
         setError('Email is already in use');
+      } else if (err.code === 'auth/invalid-email') {
+        setError('Invalid email address');
+      } else if (err.code === 'auth/weak-password') {
+        setError('Password is too weak');
       } else {
         setError('Failed to create account. Please try again.');
-        console.error(err);
       }
     } finally {
       setLoading(false);
@@ -58,6 +68,7 @@ const SignupScreen = ({ onToggleAuth, onSignupSuccess }) => {
             onChange={(e) => setName(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             required
+            disabled={loading}
           />
         </div>
         
@@ -72,6 +83,7 @@ const SignupScreen = ({ onToggleAuth, onSignupSuccess }) => {
             onChange={(e) => setEmail(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             required
+            disabled={loading}
           />
         </div>
         
@@ -86,6 +98,7 @@ const SignupScreen = ({ onToggleAuth, onSignupSuccess }) => {
             onChange={(e) => setPassword(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             required
+            disabled={loading}
           />
         </div>
         
@@ -100,6 +113,7 @@ const SignupScreen = ({ onToggleAuth, onSignupSuccess }) => {
             onChange={(e) => setConfirmPassword(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             required
+            disabled={loading}
           />
         </div>
         
@@ -120,6 +134,7 @@ const SignupScreen = ({ onToggleAuth, onSignupSuccess }) => {
           <button
             onClick={() => onToggleAuth('login')}
             className="text-blue-600 hover:text-blue-800 font-medium"
+            disabled={loading}
           >
             Log in
           </button>

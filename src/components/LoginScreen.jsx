@@ -14,15 +14,19 @@ const LoginScreen = ({ onToggleAuth, onLoginSuccess }) => {
     setLoading(true);
     
     try {
+      console.log("Attempting login with:", email);
       await login(email, password);
+      console.log("Login successful, calling onLoginSuccess callback");
       onLoginSuccess?.();
     } catch (err) {
+      console.error("Login error in component:", err);
       setError(
         err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' 
           ? 'Invalid email or password' 
-          : 'Failed to log in. Please try again.'
+          : err.code === 'auth/too-many-requests'
+          ? 'Too many failed login attempts. Please try again later.'
+          : 'Failed to log in. Please check your credentials and try again.'
       );
-      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -46,6 +50,7 @@ const LoginScreen = ({ onToggleAuth, onLoginSuccess }) => {
             onChange={(e) => setEmail(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             required
+            disabled={loading}
           />
         </div>
         
@@ -60,6 +65,7 @@ const LoginScreen = ({ onToggleAuth, onLoginSuccess }) => {
             onChange={(e) => setPassword(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             required
+            disabled={loading}
           />
         </div>
         
