@@ -11,6 +11,7 @@ import { db } from './firebase'; // Corrected import path to local firebase.js
 import { createClient } from "@deepgram/sdk";
 import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
 import Home from './pages/Home/Home';
+import Meeting_page from './pages/Meeting/Meeting_page';
 
 // Simple error boundary component
 class ErrorBoundary extends React.Component {
@@ -334,7 +335,7 @@ function App() {
   const speakerMapRef = useRef(new Map());
   const transcriptEndRef = useRef(null);
   const audioChunksRef = useRef([]); // Add a ref to store audio chunks
-  const DEEPGRAM_API_KEY = "API_KEY"; // Replace with your actual Deepgram API key
+  const DEEPGRAM_API_KEY = "16dcb20c07a4be54791de06f5059e9c412284862"; // Replace with your actual Deepgram API key
   const DEBUG_MODE = true; // Set to true for additional logging
   
   console.log("Environment variables loaded:", {
@@ -950,6 +951,7 @@ function App() {
           />
         } />
         <Route path="/home" element={<Home />} />
+        <Route path="/meeting-page/:id" element={<Meeting_page />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>

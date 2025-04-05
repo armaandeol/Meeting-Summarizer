@@ -242,7 +242,19 @@ const MeetingSummarizerHomepage = () => {
           </div>
           
           {/* Recent Meetings Section */}
-          <h3 className="text-xl font-medium text-gray-800 mb-4">Recent Meetings</h3>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-medium text-gray-800">Recent Meetings</h3>
+            <button 
+              onClick={() => navigate(`/meeting-page/all`)} 
+              className="text-indigo-600 hover:text-indigo-800 text-sm flex items-center font-medium cursor-pointer underline"
+              style={{ textDecoration: "underline" }}
+            >
+              View All
+              <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
+              </svg>
+            </button>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             {isLoading ? (
               // Loading state
@@ -280,7 +292,7 @@ const MeetingSummarizerHomepage = () => {
                       </div>
                     </div>
                     <a 
-                      href={`/meeting/${meeting.id}`} 
+                      href={`/meeting-page/${meeting.id}`} 
                       className="text-indigo-600 text-sm hover:text-indigo-800"
                       onClick={(e) => {
                         e.preventDefault();
