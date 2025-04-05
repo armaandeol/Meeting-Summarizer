@@ -13,6 +13,7 @@ export const saveTranscriptionToFirebase = async ({
   transcriptEntries,
   summary,
   topics,
+  segmentedAnalysis = [], // Add segmentedAnalysis parameter with default
   currentUser,
 }) => {
   // Create blob from audio chunks
@@ -37,6 +38,7 @@ export const saveTranscriptionToFirebase = async ({
     transcript: transcriptEntries,
     summary: summary,
     topics: topics,
+    segmentedAnalysis, // Include segmented analysis data
     createdAt: serverTimestamp(),
   };
 
@@ -48,4 +50,32 @@ export const saveTranscriptionToFirebase = async ({
   console.log("Meeting saved with ID:", docRef.id);
 
   return docRef.id;
+};
+
+// Save a single segment to Firebase
+export const saveSegmentToFirebase = async (
+  audioChunks,
+  segmentNumber,
+  currentUser
+) => {
+  if (!currentUser) {
+    throw new Error("No authenticated user");
+  }
+
+  // Create blob from audio chunks
+  const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+
+  // Generate unique filename
+  const fileName = `segment_${Date.now()}_${segmentNumber}.webm`;
+  const storage = getStorage();
+  const audioRef = storageRef(
+    storage,
+    `segments/${currentUser.uid}/${fileName}`
+  );
+
+  // Upload to Firebase Storage
+  const uploadResult = await uploadBytes(audioRef, audioBlob);
+  const downloadURL = await getDownloadURL(uploadResult.ref);
+
+  return downloadURL;
 };

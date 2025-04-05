@@ -1,6 +1,17 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
-import { saveTranscriptionToFirebase } from "../services/firebaseService";
+import {
+  getStorage,
+  ref as storageRef,
+  uploadBytes,
+  getDownloadURL,
+} from "firebase/storage";
+import {
+  saveTranscriptionToFirebase,
+  saveSegmentToFirebase,
+} from "../services/firebaseService";
+import { checkProxyServerConnection } from "../utils/connectionUtils";
+import DeepgramService from "../services/deepgramService";
 
 export const useTranscription = (DEEPGRAM_API_KEY) => {
   const [isRecording, setIsRecording] = useState(false);
@@ -15,6 +26,8 @@ export const useTranscription = (DEEPGRAM_API_KEY) => {
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [deepgramAnalysis, setDeepgramAnalysis] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [segmentedAnalysis, setSegmentedAnalysis] = useState([]);
+  const [isProcessingSegment, setIsProcessingSegment] = useState(false);
 
   const { currentUser } = useAuth() || {};
   const socketRef = useRef(null);
@@ -23,8 +36,67 @@ export const useTranscription = (DEEPGRAM_API_KEY) => {
   const speakerMapRef = useRef(new Map());
   const audioChunksRef = useRef([]);
   const transcriptEndRef = useRef(null);
+  const segmentChunksRef = useRef([]);
+  const segmentTimerRef = useRef(null);
+  const recordingStartTimeRef = useRef(null);
+  const lastSegmentTimeRef = useRef(null);
 
-  const checkMicrophoneAvailability = async () => {
+  const SEGMENT_DURATION = 15000;
+  const INITIAL_DELAY = 10000;
+
+  const [firebaseConnected, setFirebaseConnected] = useState(true);
+  const [proxyServerConnected, setProxyServerConnected] = useState(true);
+  const [connectionChecked, setConnectionChecked] = useState(false);
+  const [connectionErrorMessage, setConnectionErrorMessage] = useState("");
+
+  const audioBufferRef = useRef([]);
+  const wsReconnectAttemptsRef = useRef(0);
+  const MAX_RECONNECT_ATTEMPTS = 3;
+  const heartbeatIntervalRef = useRef(null);
+  const [wsState, setWsState] = useState("closed");
+
+  const [usingSdk, setUsingSdk] = useState(true);
+  const deepgramServiceRef = useRef(null);
+
+  const reconnectWebSocketRef = useRef(null);
+  const handleSocketCloseRef = useRef(null);
+  const handleSocketErrorRef = useRef(null);
+  const setupHeartbeatRef = useRef(null);
+  const cleanupResourcesRef = useRef(null);
+  const setupSegmentTimerRef = useRef(null);
+
+  useEffect(() => {
+    const checkConnections = async () => {
+      const proxyStatus = await checkProxyServerConnection();
+      setProxyServerConnected(proxyStatus.available);
+
+      if (!proxyStatus.available) {
+        console.error("Proxy server connection issue:", proxyStatus.message);
+        setConnectionErrorMessage(proxyStatus.message);
+      }
+
+      setConnectionChecked(true);
+    };
+
+    checkConnections();
+  }, []);
+
+  useEffect(() => {
+    if (DEEPGRAM_API_KEY) {
+      try {
+        deepgramServiceRef.current = new DeepgramService(DEEPGRAM_API_KEY);
+        console.log("Deepgram SDK initialized");
+      } catch (error) {
+        console.error("Failed to initialize Deepgram SDK:", error);
+        setUsingSdk(false);
+      }
+    } else {
+      deepgramServiceRef.current = null;
+      setUsingSdk(false);
+    }
+  }, [DEEPGRAM_API_KEY]);
+
+  const checkMicrophoneAvailability = useCallback(async () => {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const audioInputs = devices.filter(
@@ -46,124 +118,261 @@ export const useTranscription = (DEEPGRAM_API_KEY) => {
         message: error.message || "Unable to check microphone availability",
       };
     }
-  };
-
-  // Handle WebSocket messages
-  const handleMessage = useCallback((message) => {
-    try {
-      const data = JSON.parse(message.data);
-
-      if (data.channel?.alternatives?.[0]?.words && data.is_final) {
-        const words = data.channel.alternatives[0].words;
-        const newEntries = [];
-        let currentSpeaker = -1;
-        let currentText = [];
-
-        words.forEach((word) => {
-          const speakerId = word.speaker !== undefined ? word.speaker : -1;
-          if (!speakerMapRef.current.has(speakerId)) {
-            speakerMapRef.current.set(speakerId, speakerMapRef.current.size);
-          }
-          const displaySpeaker = speakerMapRef.current.get(speakerId);
-
-          if (displaySpeaker !== currentSpeaker && currentText.length > 0) {
-            newEntries.push({
-              speaker: currentSpeaker,
-              text: currentText.join(" "),
-              timestamp: Date.now(),
-            });
-            currentText = [];
-          }
-          currentSpeaker = displaySpeaker;
-          currentText.push(word.punctuated_word || word.word);
-        });
-        if (currentText.length > 0) {
-          newEntries.push({
-            speaker: currentSpeaker,
-            text: currentText.join(" "),
-            timestamp: Date.now(),
-          });
-        }
-
-        if (newEntries.length > 0) {
-          setTranscriptEntries((prev) => [...prev, ...newEntries]);
-          newEntries.forEach((entry) =>
-            detectActionItems(entry.text, entry.speaker)
-          );
-        }
-      }
-
-      const results = data.channel?.alternatives?.[0];
-
-      // Process sentiment data
-      if (
-        results?.sentiment_segments &&
-        Array.isArray(results.sentiment_segments)
-      ) {
-        const newSentimentData = results.sentiment_segments.map((seg) => ({
-          text: seg.text,
-          sentiment: seg.sentiment,
-          score: seg.sentiment_score,
-          start_word: seg.start_word,
-          end_word: seg.end_word,
-          timestamp: Date.now(),
-        }));
-        if (newSentimentData.length > 0) {
-          setSentimentData((prev) => [...prev, ...newSentimentData]);
-        }
-      }
-
-      // Process topics
-      if (results?.topics && Array.isArray(results.topics)) {
-        const newTopics = results.topics.map((t) => ({
-          topic: t.topic,
-          confidence_score: t.confidence_score,
-        }));
-        if (newTopics.length > 0) {
-          setTopics((prev) => [...prev, ...newTopics]);
-        }
-      }
-
-      // Process entities
-      if (results?.entities && Array.isArray(results.entities)) {
-        const newEntities = results.entities.map((e) => ({
-          label: e.label,
-          value: e.value,
-          confidence: e.confidence,
-          start_word: e.start_word,
-          end_word: e.end_word,
-        }));
-        if (newEntities.length > 0) {
-          setDetectedEntities((prev) => [...prev, ...newEntities]);
-        }
-      }
-
-      // Process intents
-      if (results?.intents && Array.isArray(results.intents)) {
-        const newIntents = results.intents.map((i) => ({
-          intent: i.intent,
-          confidence_score: i.confidence_score,
-        }));
-        if (newIntents.length > 0) {
-          setDetectedIntents((prev) => [...prev, ...newIntents]);
-        }
-      }
-
-      // Process summary
-      if (data.results?.summary?.short) {
-        const finalSummary = data.results.summary.short;
-        setSummary(finalSummary);
-      }
-    } catch (error) {
-      console.error("Message processing error:", error);
-    }
   }, []);
 
-  // Detect action items from text
+  const saveSegmentToLocalStorage = useCallback(
+    async (audioBlob, segmentNumber) => {
+      try {
+        const blobUrl = URL.createObjectURL(audioBlob);
+
+        const segmentInfo = {
+          id: `local-segment-${Date.now()}-${segmentNumber}`,
+          timestamp: Date.now(),
+          segmentNumber,
+          localUrl: blobUrl,
+          size: audioBlob.size,
+        };
+
+        const existingSegmentsJson =
+          localStorage.getItem("meeting-segments") || "[]";
+        const existingSegments = JSON.parse(existingSegmentsJson);
+
+        existingSegments.push(segmentInfo);
+
+        localStorage.setItem(
+          "meeting-segments",
+          JSON.stringify(existingSegments)
+        );
+
+        console.log(
+          `Segment ${segmentNumber} saved locally with URL: ${blobUrl}`
+        );
+        return blobUrl;
+      } catch (error) {
+        console.error("Error saving segment to local storage:", error);
+        return null;
+      }
+    },
+    []
+  );
+
+  const analyzeSegmentWithDeepgram = useCallback(
+    async (audioUrl) => {
+      if (!audioUrl || !DEEPGRAM_API_KEY) return null;
+
+      console.log("⏳ Analyzing segment with proxy server...");
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+        const proxyResponse = await fetch(
+          "http://localhost:3001/api/analyze-audio",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              audioUrl,
+              apiKey: DEEPGRAM_API_KEY,
+            }),
+            signal: controller.signal,
+          }
+        );
+
+        clearTimeout(timeoutId);
+
+        if (!proxyResponse.ok) {
+          throw new Error(
+            `Proxy server returned ${
+              proxyResponse.status
+            }: ${await proxyResponse.text()}`
+          );
+        }
+
+        const result = await proxyResponse.json();
+
+        if (!result.results) {
+          throw new Error("Unexpected response format from Deepgram");
+        }
+
+        console.log("✅ Analysis completed successfully:", {
+          hasTranscript:
+            !!result.results?.channels?.[0]?.alternatives?.[0]?.transcript,
+          hasSummary: !!result.results?.summary?.short,
+          hasTopics: !!(result.results?.topics?.segments || []).length > 0,
+        });
+
+        return {
+          summary: result.results?.summary?.short || null,
+          topics:
+            result.results?.topics?.segments?.flatMap(
+              (segment) => segment.topics
+            ) || [],
+          sentiment: result.results?.sentiments?.average?.sentiment || null,
+          sentimentScore:
+            result.results?.sentiments?.average?.sentiment_score || 0,
+          transcript:
+            result.results?.channels[0]?.alternatives[0]?.transcript || null,
+        };
+      } catch (error) {
+        if (error.name === "AbortError") {
+          console.error("❌ Analysis request timed out");
+          throw new Error(
+            "Analysis request timed out. Server might be overloaded."
+          );
+        }
+
+        console.error("❌ Analysis Error:", error);
+        setProxyServerConnected(false);
+        throw error;
+      }
+    },
+    [DEEPGRAM_API_KEY]
+  );
+
+  const processAudioSegment = useCallback(async () => {
+    if (!isRecording || segmentChunksRef.current.length === 0) return;
+
+    setIsProcessingSegment(true);
+
+    try {
+      const segmentBlob = new Blob(segmentChunksRef.current, {
+        type: "audio/webm",
+      });
+      const currentSegmentChunks = [...segmentChunksRef.current];
+      segmentChunksRef.current = [];
+      const timestamp = Date.now();
+      const segmentNumber = segmentedAnalysis.length + 1;
+
+      let segmentURL = null;
+
+      if (currentUser && firebaseConnected) {
+        try {
+          segmentURL = await saveSegmentToFirebase(
+            currentSegmentChunks,
+            segmentNumber,
+            currentUser
+          );
+
+          if (segmentURL) {
+            console.log(
+              `Segment ${segmentNumber} saved to Firebase with URL: ${segmentURL}`
+            );
+          }
+        } catch (error) {
+          console.error("Firebase storage error:", error);
+          setFirebaseConnected(false);
+          setConnectionErrorMessage(`Firebase storage error: ${error.message}`);
+        }
+      }
+
+      if (!segmentURL) {
+        console.log("Falling back to local storage for segment");
+        segmentURL = await saveSegmentToLocalStorage(
+          segmentBlob,
+          segmentNumber
+        );
+      }
+
+      if (segmentURL && proxyServerConnected) {
+        try {
+          const segmentAnalysis = await analyzeSegmentWithDeepgram(segmentURL);
+
+          if (segmentAnalysis) {
+            setSegmentedAnalysis((prev) => [
+              {
+                id: `segment-${segmentNumber}`,
+                timestamp,
+                segmentNumber,
+                audioUrl: segmentURL,
+                ...segmentAnalysis,
+              },
+              ...prev,
+            ]);
+          }
+        } catch (error) {
+          console.error("Error analyzing segment:", error);
+          setProxyServerConnected(false);
+          setConnectionErrorMessage(
+            `Deepgram analysis error: ${error.message}`
+          );
+
+          setSegmentedAnalysis((prev) => [
+            {
+              id: `segment-${segmentNumber}`,
+              timestamp,
+              segmentNumber,
+              audioUrl: segmentURL,
+              error: error.message,
+              transcript: "Analysis failed - check server connection",
+            },
+            ...prev,
+          ]);
+        }
+      } else if (segmentURL) {
+        setSegmentedAnalysis((prev) => [
+          {
+            id: `segment-${segmentNumber}`,
+            timestamp,
+            segmentNumber,
+            audioUrl: segmentURL,
+            transcript: "Cannot analyze - server disconnected",
+          },
+          ...prev,
+        ]);
+      }
+    } catch (error) {
+      console.error("Error processing audio segment:", error);
+    } finally {
+      setIsProcessingSegment(false);
+    }
+  }, [
+    isRecording,
+    currentUser,
+    segmentedAnalysis.length,
+    firebaseConnected,
+    proxyServerConnected,
+    saveSegmentToLocalStorage,
+    analyzeSegmentWithDeepgram,
+  ]);
+
+  const setupSegmentTimer = useCallback(() => {
+    if (segmentTimerRef.current) {
+      clearInterval(segmentTimerRef.current);
+    }
+
+    recordingStartTimeRef.current = Date.now();
+    lastSegmentTimeRef.current = null;
+
+    const initialDelayTimeout = setTimeout(() => {
+      segmentTimerRef.current = setInterval(() => {
+        const now = Date.now();
+        if (segmentChunksRef.current.length > 0) {
+          processAudioSegment();
+        }
+        lastSegmentTimeRef.current = now;
+      }, SEGMENT_DURATION);
+    }, INITIAL_DELAY);
+
+    return () => {
+      clearTimeout(initialDelayTimeout);
+      if (segmentTimerRef.current) {
+        clearInterval(segmentTimerRef.current);
+      }
+    };
+  }, [processAudioSegment]);
+
+  useEffect(() => {
+    setupSegmentTimerRef.current = setupSegmentTimer;
+  }, [setupSegmentTimer]);
+
   const detectActionItems = useCallback((text, speaker) => {
     const actionRegex =
       /(\b(I need to|we should|must|please|action item|task|assign|follow up|next step|remember to|don't forget|critical|urgent)\b.*?)(?:\.|$|;)/gi;
     const matches = [...text.matchAll(actionRegex)];
+
     if (matches.length > 0) {
       setActionItems((prev) => {
         const existingTexts = new Set(
@@ -174,6 +383,7 @@ export const useTranscription = (DEEPGRAM_API_KEY) => {
           .filter(
             (txt) => txt.length > 10 && !existingTexts.has(txt.toLowerCase())
           );
+
         return [
           ...prev,
           ...newItems.map((txt) => ({
@@ -188,147 +398,179 @@ export const useTranscription = (DEEPGRAM_API_KEY) => {
     }
   }, []);
 
-  // Save recording to Firebase
-  const saveRecording = async () => {
-    if (audioChunksRef.current.length === 0 || !currentUser) return;
+  const handleMessage = useCallback(
+    (message) => {
+      try {
+        const data = JSON.parse(message.data);
+        console.log("Received message from Deepgram:", data);
 
-    try {
-      await saveTranscriptionToFirebase({
-        audioChunks: audioChunksRef.current,
-        transcriptEntries,
-        summary,
-        topics,
-        currentUser,
-      });
+        if (data.channel?.alternatives?.[0]?.words && data.is_final) {
+          const words = data.channel.alternatives[0].words;
+          const newEntries = [];
+          let currentSpeaker = -1;
+          let currentText = [];
 
-      // Notify user
-      alert("Meeting saved and analyzed successfully!");
-    } catch (error) {
-      console.error("Error saving meeting:", error);
-      alert("Failed to save meeting: " + error.message);
-    }
-  };
+          words.forEach((word) => {
+            const speakerId = word.speaker !== undefined ? word.speaker : -1;
+            if (!speakerMapRef.current.has(speakerId)) {
+              speakerMapRef.current.set(speakerId, speakerMapRef.current.size);
+            }
+            const displaySpeaker = speakerMapRef.current.get(speakerId);
 
-  // Analyze audio with Deepgram
-  const analyzeAudioWithDeepgram = async (audioUrl) => {
-    if (!audioUrl || !DEEPGRAM_API_KEY) return null;
+            if (displaySpeaker !== currentSpeaker && currentText.length > 0) {
+              newEntries.push({
+                speaker: currentSpeaker,
+                text: currentText.join(" "),
+                timestamp: Date.now(),
+              });
+              currentText = [];
+            }
+            currentSpeaker = displaySpeaker;
+            currentText.push(word.punctuated_word || word.word);
+          });
 
-    setIsAnalyzing(true);
+          if (currentText.length > 0) {
+            newEntries.push({
+              speaker: currentSpeaker,
+              text: currentText.join(" "),
+              timestamp: Date.now(),
+            });
+          }
 
-    try {
-      console.log("⏳ Sending audio to proxy server for analysis...");
-
-      const proxyResponse = await fetch(
-        "http://localhost:3001/api/analyze-audio",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            audioUrl,
-            apiKey: DEEPGRAM_API_KEY,
-          }),
+          if (newEntries.length > 0) {
+            console.log("Adding new transcript entries:", newEntries);
+            setTranscriptEntries((prev) => [...prev, ...newEntries]);
+            newEntries.forEach((entry) =>
+              detectActionItems(entry.text, entry.speaker)
+            );
+          }
         }
-      );
 
-      if (!proxyResponse.ok) {
-        throw new Error(
-          `Proxy server returned ${
-            proxyResponse.status
-          }: ${await proxyResponse.text()}`
-        );
+        const results = data.channel?.alternatives?.[0];
+
+        if (
+          results?.sentiment_segments &&
+          Array.isArray(results.sentiment_segments)
+        ) {
+          setSentimentData((prev) => [
+            ...prev,
+            ...results.sentiment_segments.map((seg) => ({
+              text: seg.text,
+              sentiment: seg.sentiment,
+              score: seg.sentiment_score,
+              start_word: seg.start_word,
+              end_word: seg.end_word,
+              timestamp: Date.now(),
+            })),
+          ]);
+        }
+
+        if (results?.topics && Array.isArray(results.topics)) {
+          setTopics((prev) => [
+            ...prev,
+            ...results.topics.map((t) => ({
+              topic: t.topic,
+              confidence_score: t.confidence_score,
+            })),
+          ]);
+        }
+      } catch (error) {
+        console.error("Error processing WebSocket message:", error);
       }
+    },
+    [detectActionItems]
+  );
 
-      const result = await proxyResponse.json();
-
-      // Extract useful information
-      const analysisData = {
-        summary: result.results?.summary?.short || null,
-        topics:
-          result.results?.topics?.segments?.flatMap(
-            (segment) => segment.topics
-          ) || [],
-        intents:
-          result.results?.intents?.segments?.flatMap(
-            (segment) => segment.intents
-          ) || [],
-        sentiment: result.results?.sentiments?.average?.sentiment || null,
-        sentimentScore:
-          result.results?.sentiments?.average?.sentiment_score || 0,
-        transcript:
-          result.results?.channels[0]?.alternatives[0]?.transcript || null,
-      };
-
-      setDeepgramAnalysis(analysisData);
-
-      // Update the summary state if it exists
-      if (analysisData.summary) {
-        setSummary(analysisData.summary);
-      }
-
-      return analysisData;
-    } catch (error) {
-      console.error("❌ Deepgram Analysis Error:", error);
-      return null;
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
-  // Cleanup resources
   const cleanupResources = useCallback(async () => {
     console.log("Cleanup: Initiating resource cleanup...");
-
-    if (audioChunksRef.current.length > 0 && currentUser) {
-      try {
-        await saveRecording();
-      } catch (err) {
-        console.error("Error saving recording:", err);
-      }
-    }
 
     if (mediaRecorderRef.current?.state === "recording") {
       try {
         mediaRecorderRef.current.stop();
-        console.log("Cleanup: MediaRecorder stopped.");
-      } catch (e) {
-        console.error("Cleanup Error: Stopping MediaRecorder failed", e);
+      } catch (err) {
+        console.error("Error stopping media recorder:", err);
       }
     }
-    mediaRecorderRef.current = null;
 
-    // Reset audio chunks
-    audioChunksRef.current = [];
-
-    if (socketRef.current?.readyState === WebSocket.OPEN) {
+    if (socketRef.current) {
       try {
-        socketRef.current.close(1000, "Client stopping recording");
-        console.log("Cleanup: WebSocket closed.");
-      } catch (e) {
-        console.error("Cleanup Error: Closing WebSocket failed", e);
+        if (socketRef.current.readyState === WebSocket.OPEN) {
+          socketRef.current.close(1000, "Recording stopped");
+        }
+        socketRef.current = null;
+      } catch (err) {
+        console.error("Error closing WebSocket:", err);
       }
     }
-    socketRef.current = null;
 
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
-      console.log("Cleanup: MediaStream tracks stopped.");
+      streamRef.current = null;
     }
-    streamRef.current = null;
+
+    if (segmentTimerRef.current) {
+      clearInterval(segmentTimerRef.current);
+      segmentTimerRef.current = null;
+    }
+
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+
+    if (segmentChunksRef.current.length > 0) {
+      try {
+        await processAudioSegment();
+      } catch (err) {
+        console.error("Error processing final segment:", err);
+      }
+    }
+
+    if (audioChunksRef.current.length > 0 && currentUser) {
+      try {
+        console.log("Saving full recording to Firebase...");
+        await saveTranscriptionToFirebase({
+          audioChunks: audioChunksRef.current,
+          transcriptEntries,
+          summary,
+          topics,
+          segmentedAnalysis,
+          currentUser,
+        });
+        console.log("Meeting saved successfully!");
+      } catch (err) {
+        console.error("Error saving meeting to Firebase:", err);
+      }
+    }
 
     setIsRecording(false);
     setConnectionStatus("Not Connected");
-    console.log("Cleanup: State reset.");
-  }, [currentUser]); // Add currentUser as dependency
+    audioChunksRef.current = [];
+    audioBufferRef.current = [];
+    wsReconnectAttemptsRef.current = 0;
 
-  // Start recording
+    console.log("Cleanup complete");
+  }, [
+    currentUser,
+    processAudioSegment,
+    transcriptEntries,
+    summary,
+    topics,
+    segmentedAnalysis,
+  ]);
+
+  useEffect(() => {
+    cleanupResourcesRef.current = cleanupResources;
+  }, [cleanupResources]);
+
   const startRecording = useCallback(async () => {
     if (isRecording) return;
     console.log("Start Recording: Initiated.");
 
-    // Reset audio chunks array
     audioChunksRef.current = [];
+    audioBufferRef.current = [];
+    segmentChunksRef.current = [];
+    wsReconnectAttemptsRef.current = 0;
     speakerMapRef.current = new Map();
     setTranscriptEntries([]);
     setActionItems([]);
@@ -337,6 +579,7 @@ export const useTranscription = (DEEPGRAM_API_KEY) => {
     setDetectedEntities([]);
     setDetectedIntents([]);
     setSummary("");
+    setSegmentedAnalysis([]);
     setConnectionStatus("Connecting...");
 
     if (!DEEPGRAM_API_KEY) {
@@ -345,17 +588,17 @@ export const useTranscription = (DEEPGRAM_API_KEY) => {
       return;
     }
 
-    // Add preliminary check for microphone
-    const micCheck = await checkMicrophoneAvailability();
-    if (!micCheck.available) {
-      alert(`Microphone check failed: ${micCheck.message}`);
-      setConnectionStatus("Error: No Microphone");
-      return;
-    }
-
     try {
-      console.log("Start Recording: Requesting media permissions...");
-      // Add more detailed constraints for better browser compatibility
+      const micCheck = await checkMicrophoneAvailability();
+      if (!micCheck.available) {
+        alert(`Microphone check failed: ${micCheck.message}`);
+        setConnectionStatus("Error: No Microphone");
+        return;
+      }
+
+      console.log("Requesting microphone access...");
+      setConnectionStatus("Accessing microphone...");
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -366,12 +609,16 @@ export const useTranscription = (DEEPGRAM_API_KEY) => {
         },
       });
       streamRef.current = stream;
-      console.log("Start Recording: Media permissions granted.");
+      console.log("Microphone access granted");
 
-      // Check if we actually got audio tracks
       if (stream.getAudioTracks().length === 0) {
         throw new Error("No audio track available in the media stream");
       }
+
+      console.log("Audio tracks:", stream.getAudioTracks().length);
+
+      console.log("Setting up Deepgram WebSocket connection...");
+      setConnectionStatus("Connecting to Deepgram...");
 
       const params = new URLSearchParams({
         model: "nova-2",
@@ -380,15 +627,15 @@ export const useTranscription = (DEEPGRAM_API_KEY) => {
         smart_format: "true",
         diarize: "true",
       });
-      const wsUrl = `wss://api.deepgram.com/v1/listen?${params.toString()}`;
-      console.log("Start Recording: Connecting to WebSocket:", wsUrl);
 
-      // Add a timeout for WebSocket connection
+      const wsUrl = `wss://api.deepgram.com/v1/listen?${params.toString()}`;
+      console.log("Connecting to:", wsUrl);
+
       const socketPromise = new Promise((resolve, reject) => {
         const socket = new WebSocket(wsUrl, ["token", DEEPGRAM_API_KEY]);
         const timeout = setTimeout(() => {
           reject(new Error("WebSocket connection timeout"));
-        }, 10000); // 10 seconds timeout
+        }, 10000);
 
         socket.onopen = () => {
           clearTimeout(timeout);
@@ -406,8 +653,26 @@ export const useTranscription = (DEEPGRAM_API_KEY) => {
 
       console.log("WebSocket: Connection established.");
       setConnectionStatus("Connected");
+      setWsState("open");
 
-      // Check for supported MIME types
+      socket.onmessage = handleMessage;
+
+      socket.onclose = (event) => {
+        console.log("WebSocket: Closed.", event.code, event.reason);
+        setWsState("closed");
+        if (connectionStatus !== "Not Connected") {
+          setConnectionStatus(`Disconnected (${event.code})`);
+        }
+        setIsRecording(false);
+      };
+
+      socket.onerror = (error) => {
+        console.error("WebSocket: Error:", error);
+        setWsState("error");
+        setConnectionStatus("Error: Connection Failed");
+        cleanupResourcesRef.current?.();
+      };
+
       const mimeTypes = ["audio/webm", "audio/ogg", "audio/mp4", "audio/wav"];
       let selectedMimeType = null;
 
@@ -419,10 +684,11 @@ export const useTranscription = (DEEPGRAM_API_KEY) => {
       }
 
       if (!selectedMimeType) {
-        throw new Error("No supported MIME type found for MediaRecorder");
+        throw new Error("No supported audio format found");
       }
 
-      console.log(`Using MIME type: ${selectedMimeType}`);
+      console.log(`Using audio format: ${selectedMimeType}`);
+      setConnectionStatus("Setting up recorder...");
 
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: selectedMimeType,
@@ -433,90 +699,66 @@ export const useTranscription = (DEEPGRAM_API_KEY) => {
       mediaRecorder.addEventListener("dataavailable", (event) => {
         if (event.data.size > 0) {
           console.log(`Audio data received: ${event.data.size} bytes`);
-          // Store audio chunks for later saving
           audioChunksRef.current.push(event.data);
+          segmentChunksRef.current.push(event.data);
 
-          // Send to WebSocket for transcription
           if (socketRef.current?.readyState === WebSocket.OPEN) {
-            socketRef.current.send(event.data);
-          } else {
-            console.warn("WebSocket not open when trying to send audio data");
+            try {
+              console.log("Sending audio data to WebSocket");
+              socketRef.current.send(event.data);
+            } catch (err) {
+              console.error("Error sending data to WebSocket:", err);
+              audioBufferRef.current.push(event.data);
+            }
+          } else if (socketRef.current) {
+            console.warn("WebSocket not open, buffering data");
+            audioBufferRef.current.push(event.data);
           }
-        } else {
-          console.warn("Empty audio data received");
         }
       });
 
-      mediaRecorder.onerror = (event) => {
-        console.error("MediaRecorder Error:", event.error);
-        setConnectionStatus("Error: MediaRecorder");
-        cleanupResources();
-      };
+      mediaRecorder.addEventListener("start", () => {
+        console.log("MediaRecorder started");
+        setIsRecording(true);
+        setConnectionStatus("Recording...");
+      });
 
-      socket.onmessage = handleMessage;
-
-      socket.onclose = (event) => {
-        console.log("WebSocket: Closed.", event.code, event.reason);
-        if (connectionStatus !== "Not Connected") {
-          setConnectionStatus(`Disconnected (${event.code})`);
-        }
+      mediaRecorder.addEventListener("stop", () => {
+        console.log("MediaRecorder stopped");
         setIsRecording(false);
-      };
+        setConnectionStatus("Not Connected");
+      });
 
-      socket.onerror = (error) => {
-        console.error("WebSocket: Error:", error);
-        setConnectionStatus("Error: Connection Failed");
-        cleanupResources();
-      };
+      mediaRecorder.addEventListener("error", (error) => {
+        console.error("MediaRecorder error:", error);
+        setConnectionStatus("Error: Recording failed");
+        cleanupResourcesRef.current?.();
+      });
 
-      // Start recording with smaller time slices for more frequent data
       mediaRecorder.start(250);
-      setIsRecording(true);
-      console.log("Start Recording: MediaRecorder started.");
+      console.log("Start Recording: MediaRecorder starting.");
+
+      setupSegmentTimerRef.current?.();
     } catch (error) {
       console.error("Start Recording Error:", error);
-
-      // Improved error handling with better diagnostics
-      let errorMessage = "Unknown error";
-
-      if (error.name === "NotAllowedError") {
-        errorMessage =
-          "Permission denied. Please allow microphone access in your browser settings.";
-      } else if (error.name === "NotFoundError") {
-        errorMessage =
-          "No microphone found. Please connect a microphone and try again.";
-      } else if (
-        error.name === "NotReadableError" ||
-        error.name === "AbortError"
-      ) {
-        errorMessage =
-          "Could not access your microphone. It might be in use by another application.";
-      } else if (error.name === "SecurityError") {
-        errorMessage =
-          "Media access is not allowed in this context due to security restrictions.";
-      } else if (error.name === "TypeError") {
-        errorMessage =
-          "Media constraints are not valid or not supported by this browser.";
-      } else {
-        errorMessage =
-          error.message || "Failed to access microphone for unknown reasons.";
-      }
-
       setConnectionStatus(`Error: ${error.name || "Access Failed"}`);
-      cleanupResources();
-
-      // Show a more detailed error message to the user
-      alert(`Failed to start recording: ${errorMessage}`);
+      alert(`Failed to start recording: ${error.message}`);
+      cleanupResourcesRef.current?.();
     }
   }, [
     isRecording,
-    connectionStatus,
-    cleanupResources,
-    handleMessage,
     DEEPGRAM_API_KEY,
+    checkMicrophoneAvailability,
+    handleMessage,
+    connectionStatus,
   ]);
 
-  // Clear transcript
+  const stopRecording = useCallback(() => {
+    console.log("Stopping recording...");
+    setConnectionStatus("Stopping...");
+    cleanupResourcesRef.current?.();
+  }, []);
+
   const clearTranscript = useCallback(() => {
     if (isRecording) return;
     setTranscriptEntries([]);
@@ -526,15 +768,102 @@ export const useTranscription = (DEEPGRAM_API_KEY) => {
     setDetectedEntities([]);
     setDetectedIntents([]);
     setSummary("");
+    setSegmentedAnalysis([]);
     speakerMapRef.current = new Map();
   }, [isRecording]);
 
-  // Cleanup effect
-  useEffect(() => {
-    return () => cleanupResources();
-  }, [cleanupResources]);
+  const analyzeAudioWithDeepgram = useCallback(
+    async (audioUrl) => {
+      if (!audioUrl || !DEEPGRAM_API_KEY) return null;
 
-  // Scroll effect for transcript
+      setIsAnalyzing(true);
+      console.log("Analyzing full audio with Deepgram proxy...");
+
+      try {
+        console.log("🔵 Sending request to proxy server:", {
+          url: audioUrl,
+          options: {
+            model: "nova-2",
+            sentiment: true,
+            summarize: "v2",
+            topics: true,
+          },
+        });
+
+        const proxyResponse = await fetch(
+          "http://localhost:3001/api/analyze-audio",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              audioUrl,
+              apiKey: DEEPGRAM_API_KEY,
+            }),
+          }
+        );
+
+        if (!proxyResponse.ok) {
+          throw new Error(
+            `Proxy server returned ${
+              proxyResponse.status
+            }: ${await proxyResponse.text()}`
+          );
+        }
+
+        const result = await proxyResponse.json();
+
+        console.log("✅ Deepgram Analysis Received from proxy:");
+        console.log(
+          "  📝 Transcript Length:",
+          result.results?.channels[0]?.alternatives[0]?.transcript?.length || 0,
+          "characters"
+        );
+        console.log(
+          "  📊 Summary:",
+          result.results?.summary?.short ? "Available" : "Not available"
+        );
+        console.log(
+          "  🏷 Topics:",
+          (
+            result.results?.topics?.segments?.flatMap(
+              (segment) => segment.topics
+            ) || []
+          ).length,
+          "topics detected"
+        );
+
+        const analysisData = {
+          summary: result.results?.summary?.short || null,
+          topics:
+            result.results?.topics?.segments?.flatMap(
+              (segment) => segment.topics
+            ) || [],
+          sentiment: result.results?.sentiments?.average?.sentiment || null,
+          sentimentScore:
+            result.results?.sentiments?.average?.sentiment_score || 0,
+          transcript:
+            result.results?.channels[0]?.alternatives[0]?.transcript || null,
+        };
+
+        setDeepgramAnalysis(analysisData);
+
+        if (analysisData.summary) {
+          setSummary(analysisData.summary);
+        }
+
+        return analysisData;
+      } catch (error) {
+        console.error("❌ Analysis Error:", error);
+        return null;
+      } finally {
+        setIsAnalyzing(false);
+      }
+    },
+    [DEEPGRAM_API_KEY]
+  );
+
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [transcriptEntries]);
@@ -552,10 +881,19 @@ export const useTranscription = (DEEPGRAM_API_KEY) => {
     isSummarizing,
     deepgramAnalysis,
     isAnalyzing,
+    segmentedAnalysis,
+    isProcessingSegment,
     transcriptEndRef,
     startRecording,
-    cleanupResources,
+    stopRecording,
+    cleanupResources: cleanupResourcesRef.current,
     clearTranscript,
     analyzeAudioWithDeepgram,
+    firebaseConnected,
+    proxyServerConnected,
+    connectionChecked,
+    connectionErrorMessage,
+    wsState,
+    usingSdk,
   };
 };

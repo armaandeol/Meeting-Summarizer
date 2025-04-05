@@ -8,7 +8,8 @@ export const exportJSON = (
   topics,
   detectedEntities,
   detectedIntents,
-  summary
+  summary,
+  segmentedAnalysis = [] // Add segmentedAnalysis parameter
 ) => {
   if (transcriptEntries.length === 0) {
     alert("No transcript data to export.");
@@ -23,6 +24,7 @@ export const exportJSON = (
     detectedEntities,
     detectedIntents,
     summary,
+    segmentedAnalysis, // Include in JSON export
     createdAt: new Date().toISOString(),
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -38,6 +40,7 @@ export const exportPDF = async (
   detectedEntities,
   detectedIntents,
   summary,
+  segmentedAnalysis = [], // Add segmentedAnalysis parameter
   setIsExporting
 ) => {
   if (transcriptEntries.length === 0) {
@@ -96,6 +99,82 @@ export const exportPDF = async (
     if (summary) {
       addText("AI Summary (Deepgram):", 14, true);
       addText(summary, 10);
+      y -= 10;
+    }
+
+    // Add segmented analysis section
+    if (segmentedAnalysis.length > 0) {
+      addText("Time-Segmented Analysis:", 14, true);
+      y -= 5;
+
+      // Process a maximum of 10 segments to avoid excessively long PDFs
+      const displaySegments = segmentedAnalysis.slice(0, 10);
+
+      displaySegments.forEach((segment, index) => {
+        const segmentTime = new Date(segment.timestamp).toLocaleTimeString();
+        addText(
+          `Segment ${segment.segmentNumber} (${segmentTime}):`,
+          12,
+          true,
+          10
+        );
+
+        if (segment.error) {
+          addText(`Error: ${segment.error}`, 10, false, 20);
+        } else {
+          if (segment.sentiment) {
+            addText(
+              `Sentiment: ${segment.sentiment} (${
+                segment.sentimentScore?.toFixed(2) || "N/A"
+              })`,
+              10,
+              false,
+              20
+            );
+          }
+
+          if (segment.topics && segment.topics.length > 0) {
+            addText(
+              `Topics: ${segment.topics.map((t) => t.topic).join(", ")}`,
+              10,
+              false,
+              20
+            );
+          }
+
+          if (segment.intents && segment.intents.length > 0) {
+            addText(
+              `Intents: ${segment.intents.map((i) => i.intent).join(", ")}`,
+              10,
+              false,
+              20
+            );
+          }
+        }
+
+        if (segment.transcript) {
+          addText(
+            `Transcript: ${segment.transcript.substring(0, 100)}${
+              segment.transcript.length > 100 ? "..." : ""
+            }`,
+            10,
+            false,
+            20
+          );
+        }
+
+        y -= 5;
+      });
+
+      if (segmentedAnalysis.length > 10) {
+        addText(
+          `... and ${segmentedAnalysis.length - 10} more segments (not shown)`,
+          10,
+          false,
+          10
+        );
+      }
+
       y -= 10;
     }
 
