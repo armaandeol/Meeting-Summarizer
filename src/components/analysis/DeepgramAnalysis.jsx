@@ -33,6 +33,37 @@ const DeepgramAnalysis = ({ analysisData, isLoading }) => (
           </div>
         )}
         
+        {/* Intents Section */}
+        {analysisData.intents && analysisData.intents.length > 0 && (
+          <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
+            <h4 className="text-sm font-medium text-purple-700 mb-2">Detected Intents</h4>
+            <div className="flex flex-wrap gap-2">
+              {analysisData.intents.map((intent, index) => (
+                <span key={index} className="px-2 py-1 bg-white border border-purple-200 rounded-full text-xs font-medium">
+                  {intent.intent} ({Math.round(intent.confidence_score * 100)}%)
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {/* Entities Section */}
+        {analysisData.entities && analysisData.entities.length > 0 && (
+          <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+            <h4 className="text-sm font-medium text-indigo-700 mb-2">Detected Entities</h4>
+            <div className="flex flex-wrap gap-2">
+              {analysisData.entities.slice(0, 10).map((entity, index) => (
+                <span key={index} className="px-2 py-1 bg-white border border-indigo-200 rounded-full text-xs font-medium">
+                  {entity.value} ({entity.type})
+                </span>
+              ))}
+              {analysisData.entities.length > 10 && (
+                <span className="text-xs text-indigo-500">+{analysisData.entities.length - 10} more</span>
+              )}
+            </div>
+          </div>
+        )}
+        
         {/* Sentiment Section */}
         {analysisData.sentiment && (
           <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-100">

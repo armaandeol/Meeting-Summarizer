@@ -529,14 +529,68 @@ export const useTranscription = (DEEPGRAM_API_KEY) => {
     if (audioChunksRef.current.length > 0 && currentUser) {
       try {
         console.log("Saving full recording to Firebase...");
+
+        // First, save the full audio recording to Firebase Storage
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: "audio/webm",
+        });
+        const storage = getStorage();
+        const fileName = `full_recording_${Date.now()}.webm`;
+        const audioRef = storageRef(
+          storage,
+          `recordings/${currentUser.uid}/${fileName}`
+        );
+
+        // Upload the audio file
+        const uploadResult = await uploadBytes(audioRef, audioBlob);
+        const downloadURL = await getDownloadURL(uploadResult.ref);
+
+        console.log(
+          "Full recording uploaded, performing comprehensive analysis..."
+        );
+
+        // Perform comprehensive analysis if Deepgram service is available
+        let comprehensiveAnalysis = null;
+        if (deepgramServiceRef.current && proxyServerConnected) {
+          try {
+            setIsAnalyzing(true);
+            comprehensiveAnalysis =
+              await deepgramServiceRef.current.analyzeFullRecording(
+                downloadURL
+              );
+            setIsAnalyzing(false);
+
+            if (comprehensiveAnalysis) {
+              // Update states with the comprehensive analysis results
+              if (comprehensiveAnalysis.summary)
+                setSummary(comprehensiveAnalysis.summary);
+              if (comprehensiveAnalysis.topics)
+                setTopics(comprehensiveAnalysis.topics);
+              if (comprehensiveAnalysis.intents)
+                setDetectedIntents(comprehensiveAnalysis.intents);
+              if (comprehensiveAnalysis.entities)
+                setDetectedEntities(comprehensiveAnalysis.entities);
+
+              setDeepgramAnalysis(comprehensiveAnalysis);
+            }
+          } catch (err) {
+            console.error("Error performing comprehensive analysis:", err);
+            setIsAnalyzing(false);
+          }
+        }
+
+        // Save all data to Firestore
         await saveTranscriptionToFirebase({
           audioChunks: audioChunksRef.current,
           transcriptEntries,
-          summary,
-          topics,
+          summary: comprehensiveAnalysis?.summary || summary,
+          topics: comprehensiveAnalysis?.topics || topics,
           segmentedAnalysis,
+          intents: comprehensiveAnalysis?.intents || detectedIntents,
+          entities: comprehensiveAnalysis?.entities || detectedEntities,
           currentUser,
         });
+
         console.log("Meeting saved successfully!");
       } catch (err) {
         console.error("Error saving meeting to Firebase:", err);
@@ -557,6 +611,9 @@ export const useTranscription = (DEEPGRAM_API_KEY) => {
     summary,
     topics,
     segmentedAnalysis,
+    detectedIntents,
+    detectedEntities,
+    proxyServerConnected,
   ]);
 
   useEffect(() => {

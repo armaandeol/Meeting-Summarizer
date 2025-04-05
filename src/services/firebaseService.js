@@ -14,6 +14,8 @@ export const saveTranscriptionToFirebase = async ({
   summary,
   topics,
   segmentedAnalysis = [], // Add segmentedAnalysis parameter with default
+  intents = [], // Add intents parameter
+  entities = [], // Add entities parameter
   currentUser,
 }) => {
   // Create blob from audio chunks
@@ -39,6 +41,8 @@ export const saveTranscriptionToFirebase = async ({
     summary: summary,
     topics: topics,
     segmentedAnalysis, // Include segmented analysis data
+    intents, // Include intents data
+    entities, // Include entities data
     createdAt: serverTimestamp(),
   };
 
