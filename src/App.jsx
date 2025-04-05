@@ -14,8 +14,6 @@ import Home from './pages/Home/Home';
 import Meeting_page from './pages/Meeting/Meeting_page';
 import Chat from './pages/Chat/Chat'; // Import the new Chat component
 import TranscriptChatbot from './components/TranscriptChatbot';
-import Chat from './pages/Chat/Chat'; // Import the new Chat component
-import TranscriptChatbot from './components/TranscriptChatbot';
 
 // Simple error boundary component
 class ErrorBoundary extends React.Component {
