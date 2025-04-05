@@ -1,0 +1,51 @@
+import {
+  getStorage,
+  ref as storageRef,
+  uploadBytes,
+  getDownloadURL,
+} from "firebase/storage";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "../firebase";
+
+// Save recording to Firebase
+export const saveTranscriptionToFirebase = async ({
+  audioChunks,
+  transcriptEntries,
+  summary,
+  topics,
+  currentUser,
+}) => {
+  // Create blob from audio chunks
+  const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+
+  // Generate unique filename
+  const fileName = `recording_${Date.now()}.webm`;
+  const storage = getStorage();
+  const audioRef = storageRef(
+    storage,
+    `recordings/${currentUser.uid}/${fileName}`
+  );
+
+  // Upload to Firebase Storage
+  const uploadResult = await uploadBytes(audioRef, audioBlob);
+  const downloadURL = await getDownloadURL(uploadResult.ref);
+
+  // Save reference in Firestore
+  const recordingData = {
+    fileName: fileName,
+    fileURL: downloadURL,
+    transcript: transcriptEntries,
+    summary: summary,
+    topics: topics,
+    createdAt: serverTimestamp(),
+  };
+
+  // Use nested collection path: users/{uid}/meetings/{meetingId}
+  const userMeetingsRef = collection(db, "users", currentUser.uid, "meetings");
+
+  // Add to user's meetings subcollection
+  const docRef = await addDoc(userMeetingsRef, recordingData);
+  console.log("Meeting saved with ID:", docRef.id);
+
+  return docRef.id;
+};
