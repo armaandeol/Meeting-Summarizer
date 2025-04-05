@@ -12,6 +12,8 @@ import { createClient } from "@deepgram/sdk";
 import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
 import Home from './pages/Home/Home';
 import Meeting_page from './pages/Meeting/Meeting_page';
+import Chat from './pages/Chat/Chat'; // Import the new Chat component
+import TranscriptChatbot from './components/TranscriptChatbot';
 
 // Simple error boundary component
 class ErrorBoundary extends React.Component {
@@ -295,6 +297,18 @@ const MainAppContent = ({
                 <h2 className="text-xl font-semibold mb-6 text-gray-800 border-b pb-3">Meeting Insights (Deepgram AI)</h2>
                 <SummarySection summary={summary} isLoading={isSummarizing} />
                 <DeepgramAnalysis analysisData={deepgramAnalysis} isLoading={isAnalyzing} />
+                
+                {/* Remove the conditional rendering to make the chatbot always visible */}
+                <div className="mt-6 pt-6 border-t border-gray-200">
+                  <h2 className="text-xl font-semibold mb-4 text-gray-800">Chat with AI</h2>
+                  <div className="h-96">
+                    <TranscriptChatbot transcriptionData={{
+                      transcript: transcriptEntries,
+                      summary: summary,
+                      topics: deepgramAnalysis?.topics || []
+                    }} />
+                  </div>
+                </div>
             </div>
         </div>
     </main>
@@ -335,7 +349,7 @@ function App() {
   const speakerMapRef = useRef(new Map());
   const transcriptEndRef = useRef(null);
   const audioChunksRef = useRef([]); // Add a ref to store audio chunks
-  const DEEPGRAM_API_KEY = "16dcb20c07a4be54791de06f5059e9c412284862"; // Replace with your actual Deepgram API key
+  const DEEPGRAM_API_KEY = "API_Key"; // Replace with your actual Deepgram API key
   const DEBUG_MODE = true; // Set to true for additional logging
   
   console.log("Environment variables loaded:", {
@@ -649,15 +663,25 @@ function App() {
 
     try { 
       console.log('Start Recording: Requesting media permissions...');
+      // Add more detailed constraints for better browser compatibility
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: { 
           echoCancellation: true, 
           noiseSuppression: true, 
-          autoGainControl: true 
+          autoGainControl: true,
+          sampleRate: 44100,
+          channelCount: 1
         } 
       });
       streamRef.current = stream;
       console.log('Start Recording: Media permissions granted.');
+
+      // Check if we actually got audio tracks
+      if (stream.getAudioTracks().length === 0) {
+        throw new Error('No audio track available in the media stream');
+      }
+      
+      console.log('Audio tracks:', stream.getAudioTracks().length);
 
       const params = new URLSearchParams({
           model: 'nova-2',
@@ -668,41 +692,85 @@ function App() {
       });
       const wsUrl = `wss://api.deepgram.com/v1/listen?${params.toString()}`;
       console.log('Start Recording: Connecting to WebSocket:', wsUrl);
-      const socket = new WebSocket(wsUrl, ['token', DEEPGRAM_API_KEY]);
+      
+      // Add a timeout for WebSocket connection
+      const socketPromise = new Promise((resolve, reject) => {
+        const socket = new WebSocket(wsUrl, ['token', DEEPGRAM_API_KEY]);
+        const timeout = setTimeout(() => {
+          reject(new Error('WebSocket connection timeout'));
+        }, 10000); // 10 seconds timeout
+        
+        socket.onopen = () => {
+          clearTimeout(timeout);
+          resolve(socket);
+        };
+        
+        socket.onerror = (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        };
+      });
+      
+      const socket = await socketPromise;
       socketRef.current = socket;
 
-      socket.onopen = () => { 
-        console.log('WebSocket: Connection established.');
-        setConnectionStatus('Connected');
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
-        console.log(`Using MIME type: ${mimeType}`);
-        if (!MediaRecorder.isTypeSupported(mimeType)) { 
-          throw new Error(`Unsupported MIME type: ${mimeType}`); 
+      console.log('WebSocket: Connection established.');
+      setConnectionStatus('Connected');
+      
+      // Check for supported MIME types
+      const mimeTypes = ['audio/webm', 'audio/ogg', 'audio/mp4', 'audio/wav'];
+      let selectedMimeType = null;
+      
+      for (const type of mimeTypes) {
+        if (MediaRecorder.isTypeSupported(type)) {
+          selectedMimeType = type;
+          break;
         }
-        const mediaRecorder = new MediaRecorder(stream, { mimeType });
-        mediaRecorderRef.current = mediaRecorder;
+      }
+      
+      if (!selectedMimeType) {
+        throw new Error('No supported MIME type found for MediaRecorder');
+      }
+      
+      console.log(`Using MIME type: ${selectedMimeType}`);
+      
+      const mediaRecorder = new MediaRecorder(stream, { 
+        mimeType: selectedMimeType,
+        audioBitsPerSecond: 128000 
+      });
+      mediaRecorderRef.current = mediaRecorder;
 
-        mediaRecorder.addEventListener('dataavailable', (event) => {
-          if (event.data.size > 0) {
-            // Store audio chunks for later saving
-            audioChunksRef.current.push(event.data);
-            
-            // Send to WebSocket for transcription
-            if (socketRef.current?.readyState === WebSocket.OPEN) {
-              socketRef.current.send(event.data);
-            }
+      mediaRecorder.addEventListener('dataavailable', (event) => {
+        if (event.data.size > 0) {
+          console.log(`Audio data received: ${event.data.size} bytes`);
+          // Store audio chunks for later saving
+          audioChunksRef.current.push(event.data);
+          
+          // Send to WebSocket for transcription
+          if (socketRef.current?.readyState === WebSocket.OPEN) {
+            socketRef.current.send(event.data);
+          } else {
+            console.warn('WebSocket not open when trying to send audio data');
           }
-        });
-        
-        mediaRecorder.onerror = (event) => { 
-          console.error("MediaRecorder Error:", event.error); 
-          setConnectionStatus('Error: MediaRecorder'); 
-          cleanupResources(); 
-        };
+        } else {
+          console.warn('Empty audio data received');
+        }
+      });
+      
+      mediaRecorder.onerror = (event) => { 
+        console.error("MediaRecorder Error:", event.error); 
+        setConnectionStatus('Error: MediaRecorder'); 
+        cleanupResources(); 
+      };
 
-        mediaRecorder.start(250);
-        setIsRecording(true);
-        console.log('Start Recording: MediaRecorder started.');
+      // Add start event handler
+      mediaRecorder.onstart = () => {
+        console.log('MediaRecorder started successfully');
+      };
+
+      // Add stop event handler
+      mediaRecorder.onstop = () => {
+        console.log('MediaRecorder stopped');
       };
 
       socket.onmessage = handleMessage;
@@ -721,10 +789,18 @@ function App() {
         cleanupResources(); 
       };
 
+      // Start recording with smaller time slices for more frequent data
+      mediaRecorder.start(250);
+      setIsRecording(true);
+      console.log('Start Recording: MediaRecorder started.');
+
     } catch (error) {
       console.error('Start Recording Error:', error); 
       setConnectionStatus(`Error: ${error.name === 'NotAllowedError' ? 'Permission Denied' : error.message}`);
       cleanupResources();
+      
+      // Show a more detailed error message to the user
+      alert(`Failed to start recording: ${error.message}. Please check your microphone permissions and try again.`);
     }
   }, [isRecording, connectionStatus, cleanupResources, handleMessage, DEEPGRAM_API_KEY]);
 
@@ -952,6 +1028,7 @@ function App() {
         } />
         <Route path="/home" element={<Home />} />
         <Route path="/meeting-page/:id" element={<Meeting_page />} />
+        <Route path="/chat/:id" element={<Chat />} /> {/* Add the new Chat route */}
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>
