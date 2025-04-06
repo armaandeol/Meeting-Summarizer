@@ -5,7 +5,16 @@ class DeepgramService {
   constructor(apiKey) {
     this.apiKey = apiKey;
     this.isInitialized = !!apiKey;
-    this.proxyUrl = "http://localhost:3001/api/analyze-audio";
+
+    // Use the deployed URL in production or localhost in development
+    this.proxyUrl =
+      process.env.NODE_ENV === "production"
+        ? "https://proxy-server-phi-ivory.vercel.app/api/analyze-audio"
+        : "http://localhost:3001/api/analyze-audio";
+
+    console.log(
+      `Deepgram service initialized with proxy URL: ${this.proxyUrl}`
+    );
   }
 
   /**
@@ -51,12 +60,15 @@ class DeepgramService {
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Proxy server error (${response.status}):`, errorText);
         throw new Error(
           `Proxy server error: ${response.status} ${response.statusText}`
         );
       }
 
       const result = await response.json();
+      console.log("✅ Received response from Deepgram proxy server");
       return result;
     } catch (error) {
       console.error("Deepgram service error:", error);
@@ -95,7 +107,20 @@ class DeepgramService {
         punctuate: true,
       };
 
-      // Call proxy server
+      // Validate the audio URL before sending
+      if (
+        !audioUrl ||
+        typeof audioUrl !== "string" ||
+        !audioUrl.startsWith("http")
+      ) {
+        console.error("Invalid audio URL:", audioUrl);
+        throw new Error("Invalid audio URL. Must be a valid HTTP URL.");
+      }
+
+      // Call proxy server with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
       const response = await fetch(this.proxyUrl, {
         method: "POST",
         headers: {
@@ -106,17 +131,29 @@ class DeepgramService {
           apiKey: this.apiKey,
           options: options,
         }),
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Proxy server error (${response.status}):`, errorText);
         throw new Error(
           `Proxy server error: ${response.status} ${response.statusText}`
         );
       }
 
       const result = await response.json();
+      console.log("✅ Comprehensive analysis completed successfully");
       return this.processComprehensiveResult(result);
     } catch (error) {
+      if (error.name === "AbortError") {
+        console.error("Deepgram analysis timed out");
+        throw new Error(
+          "Analysis request timed out. The server might be overloaded."
+        );
+      }
       console.error("Deepgram comprehensive analysis error:", error);
       throw error;
     }

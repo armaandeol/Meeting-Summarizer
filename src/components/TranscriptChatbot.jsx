@@ -10,7 +10,7 @@ const TranscriptChatbot = ({ transcriptionData }) => {
   
  
   const { model } = useMemo(() => {
-    const genAI = new GoogleGenerativeAI("Google_API");
+    const genAI = new GoogleGenerativeAI("AIzaSyDhIOxDNLwPyVTyoflH7yJOxPGcSehQdAo");
     return {
       model: genAI.getGenerativeModel({
         model: "gemini-1.5-flash-latest", 

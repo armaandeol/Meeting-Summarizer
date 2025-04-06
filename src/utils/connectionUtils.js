@@ -8,19 +8,32 @@
  */
 export const checkProxyServerConnection = async () => {
   try {
-    // Simple fetch with a 3-second timeout
-    const response = await fetch(
-      "https://proxy-server-phi-ivory.vercel.app/api/analyze-audio",
-      {
-        method: "OPTIONS",
-        signal: AbortSignal.timeout(3000),
-      }
-    );
+    // Get the appropriate URL based on environment
+    const proxyUrl =
+      process.env.NODE_ENV === "production"
+        ? "https://localhost:5143"
+        : "http://localhost:3001/health";
 
-    // ANY response means the server is running - even 404s
+    console.log(`Checking proxy server at: ${proxyUrl}`);
+
+    // Simple fetch with a 3-second timeout
+    const response = await fetch(proxyUrl, {
+      method: "GET",
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log("Proxy server response:", data);
+      return {
+        available: true,
+        message: data.message || "Proxy server is available",
+      };
+    }
+
     return {
-      available: true,
-      message: "Proxy server is available",
+      available: false,
+      message: `Proxy server returned status ${response.status}`,
     };
   } catch (error) {
     console.log("Proxy server check error:", error.name, error.message);
@@ -28,7 +41,9 @@ export const checkProxyServerConnection = async () => {
     return {
       available: false,
       message:
-        "Cannot connect to proxy server. Is it running on http://localhost:3001?",
+        error.name === "AbortError"
+          ? "Connection to proxy server timed out"
+          : `Cannot connect to proxy server: ${error.message}`,
     };
   }
 };

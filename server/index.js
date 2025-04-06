@@ -6,43 +6,60 @@ const bodyParser = require("body-parser");
 
 const app = express();
 
-// Enable CORS for your React app domain
+// Enable CORS for all origins in development, specific origins in production
 app.use(
   cors({
-    origin:
-      process.env.NODE_ENV === "production"
-        ? process.env.FRONTEND_URL || "https://your-frontend-domain.vercel.app"
-        : "http://localhost:5173",
-    methods: ["GET", "POST"],
+    origin: "*", // Allow all origins - you can restrict this in production
+    methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-// Parse JSON request bodies
-app.use(bodyParser.json());
+// Increase the limit for JSON payloads
+app.use(bodyParser.json({ limit: "10mb" }));
 
 // Health check endpoint
 app.get("/health", (req, res) => {
   res.json({ status: "ok", message: "Deepgram proxy server is running" });
 });
 
+// Validate audio URL
+function isValidAudioUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch (e) {
+    return false;
+  }
+}
+
 // Proxy endpoint for Deepgram transcribeUrl
 app.post("/api/analyze-audio", async (req, res) => {
-  const { audioUrl, apiKey } = req.body;
+  const { audioUrl, apiKey, options } = req.body;
+
+  console.log("📥 Received analyze-audio request");
 
   if (!audioUrl || !apiKey) {
+    console.error("❌ Missing required parameters");
     return res
       .status(400)
       .json({ error: "Missing required parameters: audioUrl and apiKey" });
   }
 
+  // Validate the audio URL
+  if (!isValidAudioUrl(audioUrl)) {
+    console.error("❌ Invalid audio URL:", audioUrl);
+    return res.status(400).json({ error: "Invalid audio URL format" });
+  }
+
   console.log("🔄 Proxying request to Deepgram API:", {
     url: audioUrl,
-    modelType: "nova-3",
+    modelType: options?.model || "nova-3",
   });
 
   try {
-    const response = await axios({
+    // Set timeout for the Deepgram API request - 25 seconds
+    const deepgramResponse = await axios({
       method: "POST",
       url: "https://api.deepgram.com/v1/listen",
       headers: {
@@ -50,34 +67,61 @@ app.post("/api/analyze-audio", async (req, res) => {
         "Content-Type": "application/json",
       },
       params: {
-        model: "nova-3",
+        model: options?.model || "nova-3",
         sentiment: true,
         intents: true,
         summarize: "v2",
         topics: true,
+        diarize: true,
+        ...(options || {}),
       },
       data: {
         url: audioUrl,
       },
+      timeout: 25000, // 25 second timeout
     });
 
     console.log("✅ Received response from Deepgram API");
     console.log(
-      `📊 Response includes: ${Object.keys(response.data.results || {}).join(
-        ", "
-      )}`
+      `📊 Response includes: ${Object.keys(
+        deepgramResponse.data.results || {}
+      ).join(", ")}`
     );
 
-    res.json(response.data);
+    res.json(deepgramResponse.data);
   } catch (error) {
     console.error("❌ Proxy Error:", error.message);
 
-    // Send a more helpful error response
-    res.status(error.response?.status || 500).json({
-      error: "Proxy error when calling Deepgram API",
-      message: error.message,
-      details: error.response?.data,
-    });
+    if (error.response) {
+      // The request was made and the server responded with a non-2xx status
+      console.error("Response data:", error.response.data);
+      console.error("Response status:", error.response.status);
+
+      res.status(error.response.status).json({
+        error: "Error from Deepgram API",
+        message: error.message,
+        details: error.response.data,
+      });
+    } else if (error.request) {
+      // The request was made but no response was received
+      console.error("No response received from Deepgram API");
+      res.status(504).json({
+        error: "Gateway Timeout",
+        message: "No response received from Deepgram API",
+      });
+    } else if (error.code === "ECONNABORTED") {
+      // Request timeout
+      res.status(504).json({
+        error: "Timeout",
+        message: "Deepgram API request timed out",
+      });
+    } else {
+      // Something happened in setting up the request
+      res.status(500).json({
+        error: "Internal Server Error",
+        message: error.message,
+      });
+    }
   }
 });
 
