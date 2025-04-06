@@ -7,6 +7,7 @@ import ControlPanel from './transcript/ControlPanel';
 import SummarySection from './analysis/SummarySection';
 import DeepgramAnalysis from './analysis/DeepgramAnalysis';
 import TranscriptChatbot from './TranscriptChatbot';
+import GoogleMeetings from './GoogleMeetings';
 
 const MainAppContent = ({ 
   connectionStatus, 
@@ -33,6 +34,13 @@ const MainAppContent = ({
   meetingTitle,
   setMeetingTitle,
   elapsedTime,
+  // Google integration props
+  isGoogleAuthenticated,
+  loginWithGoogle,
+  upcomingMeetings,
+  currentMeeting,
+  joinMeeting,
+  isLoadingMeetings,
   meetingCount
 }) => (
   <div className="min-h-screen bg-gray-900 flex flex-col bg-[url('/texture-dark.png')] bg-repeat">
@@ -126,6 +134,18 @@ const MainAppContent = ({
         </div>
 
         <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl shadow-xl p-8 h-fit lg:sticky lg:top-28 border border-blue-500/20">
+          {/* Google Meetings Integration */}
+          {isGoogleAuthenticated !== undefined && (
+            <GoogleMeetings
+              isGoogleAuthenticated={isGoogleAuthenticated}
+              loginWithGoogle={loginWithGoogle}
+              upcomingMeetings={upcomingMeetings}
+              currentMeeting={currentMeeting}
+              joinMeeting={joinMeeting}
+              isLoading={isLoadingMeetings}
+            />
+          )}
+          
           <h2 className="text-xl font-semibold mb-6 text-white border-b border-gray-700 pb-4">Meeting Insights (Deepgram AI)</h2>
           <SummarySection summary={summary} isLoading={isSummarizing} />
           <DeepgramAnalysis analysisData={deepgramAnalysis} isLoading={isAnalyzing} />

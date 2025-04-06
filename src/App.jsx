@@ -1,4 +1,4 @@
-import React, { useState, useCallback, Suspense } from 'react';
+import React, { useState, useCallback, Suspense, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import './App.css';
@@ -19,6 +19,9 @@ import SummaryPage from './pages/SummarisedMeeting/SummarisedMeeting'
 // Hooks
 import { useTranscription } from './hooks/useTranscription';
 import { exportJSON, exportPDF } from './utils/exportUtils';
+// Google API integration
+import { useGoogleAuth } from './hooks/useGoogleAuth';
+import { useGoogleCalendar } from './hooks/useGoogleCalendar';
 
 function App() {
   console.log("App component rendering");
@@ -28,6 +31,29 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const { currentUser, logout } = useAuth() || {};
+
+  // Google integration hooks
+  const { 
+    isGoogleAuthenticated, 
+    googleUser, 
+    loginWithGoogle, 
+    logoutFromGoogle 
+  } = useGoogleAuth();
+  
+  const { 
+    upcomingMeetings, 
+    currentMeeting, 
+    isLoading: isLoadingMeetings,
+    fetchMeetings, 
+    joinMeeting 
+  } = useGoogleCalendar(isGoogleAuthenticated);
+
+  // Fetch meetings when user is authenticated with Google
+  useEffect(() => {
+    if (isGoogleAuthenticated) {
+      fetchMeetings();
+    }
+  }, [isGoogleAuthenticated, fetchMeetings]);
 
   // Get API key from environment variables
   const DEEPGRAM_API_KEY = import.meta.env.VITE_DEEPGRAM_API_KEY;
@@ -105,6 +131,7 @@ function App() {
             }} 
           />
         </div>
+        
       );
     }
     if (authView === 'signup') {
@@ -158,6 +185,13 @@ function App() {
             deepgramAnalysis={deepgramAnalysis}
             isAnalyzing={isAnalyzing}
             setAuthView={setAuthView}
+            // Google integration props
+            isGoogleAuthenticated={isGoogleAuthenticated}
+            loginWithGoogle={loginWithGoogle}
+            upcomingMeetings={upcomingMeetings}
+            currentMeeting={currentMeeting}
+            joinMeeting={joinMeeting}
+            isLoadingMeetings={isLoadingMeetings}
           />
         } />
         <Route path="/" element={<Home />} />

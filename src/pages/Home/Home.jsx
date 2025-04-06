@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { collection, addDoc, serverTimestamp, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase'; 
 import { useAuth } from '../../context/AuthContext';
 import { Helmet } from 'react-helmet';
+import MeetingsSection from '../../components/meetings/MeetingsSection';
 
-const MeetingSummarizerHomepage = () => {
+// Change the component name from MeetingSummarizerHomepage to Home
+const Home = () => {
   const navigate = useNavigate();
   const [isCreating, setIsCreating] = useState(false);
   const [recentMeetings, setRecentMeetings] = useState([]);
@@ -316,7 +318,14 @@ const MeetingSummarizerHomepage = () => {
                 </svg>
               </button>
             </div>
+            
+            {/* Google Calendar Integration */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10">
+              <div className="md:col-span-3">
+                <MeetingsSection />
+              </div>
+              
+              {/* Recent meetings from Firebase */}
               {isLoading ? (
                 // Loading state
                 Array(3).fill().map((_, index) => (
@@ -420,4 +429,4 @@ const MeetingSummarizerHomepage = () => {
   );
 };
 
-export default MeetingSummarizerHomepage;
+export default Home;
