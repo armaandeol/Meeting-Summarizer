@@ -200,6 +200,8 @@ function App() {
         <Route path="/summaries" element={<Summaries />} />
         <Route path="/summaries/:id" element={<SummaryPage />} />
         <Route path="summarised-meeting/:id" element={<SummaryPage />} />
+        <Route path="/login" element={<LoginScreen />} />
+        <Route path="/signup" element={<SignupScreen />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>

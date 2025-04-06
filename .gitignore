@@ -32,3 +32,5 @@ dist-ssr
 .env.production.local
 
 src/firebase.js
+
+.vercel

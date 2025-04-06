@@ -9,10 +9,13 @@
 export const checkProxyServerConnection = async () => {
   try {
     // Simple fetch with a 3-second timeout
-    const response = await fetch("http://localhost:3001/api/analyze-audio", {
-      method: "OPTIONS",
-      signal: AbortSignal.timeout(3000),
-    });
+    const response = await fetch(
+      "https://proxy-server-phi-ivory.vercel.app/api/analyze-audio",
+      {
+        method: "OPTIONS",
+        signal: AbortSignal.timeout(3000),
+      }
+    );
 
     // ANY response means the server is running - even 404s
     return {

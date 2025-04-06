@@ -12,7 +12,7 @@ const Home = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [recentMeetings, setRecentMeetings] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const { currentUser } = useAuth();
+  const { currentUser, loading, logout } = useAuth();
 
   // Fetch recent meetings
   useEffect(() => {
@@ -135,6 +135,19 @@ const Home = () => {
     return "Duration N/A";
   };
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch (error) {
+      console.error("Error logging out:", error);
+    }
+  };
+
+  const handleLogin = () => {
+    navigate('/login');
+  };
+
   return (
     <>
       <Helmet>
@@ -183,15 +196,40 @@ const Home = () => {
           
           {/* User Profile */}
           <div className="p-6 border-t border-blue-800/40 bg-blue-900/30">
-            <div className="flex items-center">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center shadow-md">
-                <span className="font-bold text-white text-lg">{currentUser?.displayName?.charAt(0) || currentUser?.email?.charAt(0) || 'U'}</span>
+            {currentUser ? (
+              <div className="flex flex-col">
+                <div className="flex items-center">
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center shadow-md">
+                    <span className="font-bold text-white text-lg">{currentUser?.displayName?.charAt(0) || currentUser?.email?.charAt(0) || 'U'}</span>
+                  </div>
+                  <div className="ml-4">
+                    <p className="font-medium text-white">{currentUser?.displayName || 'User'}</p>
+                    <p className="text-sm text-blue-200">{currentUser?.email || 'No email'}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={handleLogout}
+                  className="mt-4 w-full bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-600/30 py-2 rounded-lg transition-all duration-300 flex items-center justify-center"
+                >
+                  <i className="fas fa-sign-out-alt mr-2"></i>
+                  Logout
+                </button>
               </div>
-              <div className="ml-4">
-                <p className="font-medium text-white">{currentUser?.displayName || 'User'}</p>
-                <p className="text-sm text-blue-200">{currentUser?.email || 'No email'}</p>
+            ) : (
+              <div className="flex flex-col items-center">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400/30 to-indigo-500/30 flex items-center justify-center shadow-md mb-3">
+                  <i className="fas fa-user text-2xl text-blue-300/70"></i>
+                </div>
+                <p className="text-blue-200 mb-3">Not signed in</p>
+                <button 
+                  onClick={handleLogin}
+                  className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-2.5 px-4 rounded-lg flex items-center justify-center shadow-lg transition-all duration-300"
+                >
+                  <i className="fas fa-sign-in-alt mr-2"></i>
+                  Login
+                </button>
               </div>
-            </div>
+            )}
           </div>
         </div>
         

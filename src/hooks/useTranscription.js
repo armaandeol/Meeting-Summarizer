@@ -167,7 +167,7 @@ export const useTranscription = (DEEPGRAM_API_KEY) => {
         const timeoutId = setTimeout(() => controller.abort(), 15000);
 
         const proxyResponse = await fetch(
-          "http://localhost:3001/api/analyze-audio",
+          "https://proxy-server-phi-ivory.vercel.app/api/analyze-audio",
           {
             method: "POST",
             headers: {
@@ -848,7 +848,7 @@ export const useTranscription = (DEEPGRAM_API_KEY) => {
         });
 
         const proxyResponse = await fetch(
-          "http://localhost:3001/api/analyze-audio",
+          "https://proxy-server-phi-ivory.vercel.app/api/analyze-audio",
           {
             method: "POST",
             headers: {

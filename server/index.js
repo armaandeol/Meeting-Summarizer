@@ -1,14 +1,18 @@
+// File: api/index.js
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
 const bodyParser = require("body-parser");
+
 const app = express();
-const PORT = process.env.PORT || 3001;
 
 // Enable CORS for your React app domain
 app.use(
   cors({
-    origin: "http://localhost:3000", // Update this to your frontend URL
+    origin:
+      process.env.NODE_ENV === "production"
+        ? process.env.FRONTEND_URL || "https://your-frontend-domain.vercel.app"
+        : "http://localhost:5173",
     methods: ["GET", "POST"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
@@ -77,7 +81,16 @@ app.post("/api/analyze-audio", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Deepgram proxy server running on port ${PORT}`);
-  console.log(`🔗 Test the server health at: http://localhost:${PORT}/health`);
-});
+// For local development
+if (process.env.NODE_ENV !== "production") {
+  const PORT = process.env.PORT || 3001;
+  app.listen(PORT, () => {
+    console.log(`🚀 Deepgram proxy server running on port ${PORT}`);
+    console.log(
+      `🔗 Test the server health at: http://localhost:${PORT}/health`
+    );
+  });
+}
+
+// Export for Vercel serverless functions
+module.exports = app;
