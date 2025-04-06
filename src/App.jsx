@@ -94,7 +94,7 @@ function App() {
   const renderAuthScreen = () => { 
     if (authView === 'login') {
       return (
-        <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center p-4">
           <LoginScreen 
             onToggleAuth={() => setAuthView('signup')} 
             onLoginSuccess={() => {
@@ -109,7 +109,7 @@ function App() {
     }
     if (authView === 'signup') {
       return (
-        <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center p-4">
           <SignupScreen 
             onToggleAuth={() => setAuthView('login')} 
             onSignupSuccess={() => {
@@ -165,6 +165,7 @@ function App() {
         <Route path="/chat/:id" element={<Chat />} />
         <Route path="/summaries" element={<Summaries />} />
         <Route path="/summaries/:id" element={<SummaryPage />} />
+        <Route path="summarised-meeting/:id" element={<SummaryPage />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>

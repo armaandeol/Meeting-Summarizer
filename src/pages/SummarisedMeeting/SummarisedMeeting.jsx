@@ -14,20 +14,20 @@ const SummarisedMeeting = () => {
   const [meeting, setMeeting] = useState(passedMeetingData || null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [isUsingBackupData, setIsUsingBackupData] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [quickNote, setQuickNote] = useState('');
   const [quickNotes, setQuickNotes] = useState([]);
   const [followUpDate, setFollowUpDate] = useState('');
   const [showScheduler, setShowScheduler] = useState(false);
   const [taskProgress, setTaskProgress] = useState(0);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
 
   useEffect(() => {
     const fetchMeetingData = async () => {
       if (!currentUser) {
         if (passedMeetingData) {
           setMeeting(passedMeetingData);
-          setIsUsingBackupData(true);
           setIsLoading(false);
           return;
         }
@@ -46,6 +46,7 @@ const SummarisedMeeting = () => {
             ...meetingDoc.data()
           };
           setMeeting(meetingData);
+          setNewTitle(meetingData.title || "Untitled Meeting");
           
           setQuickNotes(meetingData.quickNotes || []);
           
@@ -61,7 +62,7 @@ const SummarisedMeeting = () => {
         } else {
           if (passedMeetingData) {
             setMeeting(passedMeetingData);
-            setIsUsingBackupData(true);
+            setNewTitle(passedMeetingData.title || "Untitled Meeting");
           } else {
             setError("Meeting not found");
           }
@@ -70,7 +71,7 @@ const SummarisedMeeting = () => {
         console.error("Error fetching meeting data:", err);
         if (passedMeetingData) {
           setMeeting(passedMeetingData);
-          setIsUsingBackupData(true);
+          setNewTitle(passedMeetingData.title || "Untitled Meeting");
         } else {
           setError("Failed to load meeting data");
         }
@@ -116,7 +117,7 @@ const SummarisedMeeting = () => {
   };
 
   const handleSaveQuickNote = async () => {
-    if (!quickNote.trim() || isUsingBackupData) return;
+    if (!quickNote.trim()) return;
     
     try {
       const newNote = {
@@ -145,7 +146,7 @@ const SummarisedMeeting = () => {
       const updatedNotes = quickNotes.filter(note => note.id !== noteId);
       setQuickNotes(updatedNotes);
       
-      if (currentUser && !isUsingBackupData) {
+      if (currentUser) {
         const meetingRef = doc(db, 'users', currentUser.uid, 'meetings', meetingId);
         await updateDoc(meetingRef, {
           quickNotes: updatedNotes
@@ -157,7 +158,7 @@ const SummarisedMeeting = () => {
   };
 
   const scheduleFollowUp = async () => {
-    if (!followUpDate || isUsingBackupData) return;
+    if (!followUpDate) return;
     
     try {
       const followUpMeeting = {
@@ -184,8 +185,6 @@ const SummarisedMeeting = () => {
   };
 
   const toggleTaskCompletion = async (index) => {
-    if (isUsingBackupData) return;
-    
     try {
       const updatedActionItems = [...meeting.actionItems];
       updatedActionItems[index] = {
@@ -209,6 +208,35 @@ const SummarisedMeeting = () => {
       }
     } catch (err) {
       console.error("Error toggling task completion:", err);
+    }
+  };
+
+  const handleTitleEdit = () => {
+    setEditingTitle(true);
+  };
+
+  const handleTitleSave = async () => {
+    if (!newTitle.trim()) {
+      setNewTitle(meeting.title || "Untitled Meeting");
+      setEditingTitle(false);
+      return;
+    }
+
+    try {
+      if (currentUser) {
+        const meetingRef = doc(db, 'users', currentUser.uid, 'meetings', meetingId);
+        await updateDoc(meetingRef, {
+          title: newTitle
+        });
+        
+        setMeeting({
+          ...meeting,
+          title: newTitle
+        });
+      }
+      setEditingTitle(false);
+    } catch (err) {
+      console.error("Error updating meeting title:", err);
     }
   };
 
@@ -337,12 +365,6 @@ const SummarisedMeeting = () => {
                 Back to Summaries
               </button>
             </div>
-            {isUsingBackupData && (
-              <div className="bg-yellow-900/60 text-yellow-300 text-sm py-1.5 px-4 rounded-full border border-yellow-700/50">
-                <i className="fas fa-exclamation-triangle mr-1"></i>
-                Using cached data - Some features may be limited
-              </div>
-            )}
             <div>
               <button 
                 onClick={() => navigate(`/meeting/${meetingId}`)} 
@@ -357,9 +379,32 @@ const SummarisedMeeting = () => {
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-lg shadow-lg p-6 mb-6 border border-blue-800/20">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3">
-              <h1 className="text-2xl font-bold text-white">
-                {meeting?.title || "Untitled Meeting"}
-              </h1>
+              {editingTitle ? (
+                <div className="flex w-full max-w-md">
+                  <input
+                    type="text"
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    className="bg-gray-700 border border-gray-600 rounded-l-md p-2 w-full text-white focus:ring-blue-500 focus:border-blue-500"
+                    autoFocus
+                    onKeyPress={(e) => e.key === 'Enter' && handleTitleSave()}
+                  />
+                  <button
+                    onClick={handleTitleSave}
+                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-3 rounded-r-md"
+                  >
+                    <i className="fas fa-save"></i>
+                  </button>
+                </div>
+              ) : (
+                <h1 
+                  className="text-2xl font-bold text-white cursor-pointer group flex items-center"
+                  onClick={handleTitleEdit}
+                >
+                  {meeting?.title || "Untitled Meeting"}
+                  <i className="fas fa-edit ml-2 opacity-0 group-hover:opacity-100 text-blue-400 text-sm transition-opacity duration-300"></i>
+                </h1>
+              )}
               <div className={`flex items-center ${moodDisplay.color} bg-opacity-20 rounded-full px-4 py-1.5 border border-${moodDisplay.color.replace('text-', '')}/30`}>
                 <i className={`fas ${moodDisplay.icon} mr-2`}></i>
                 <span className="text-sm font-medium">{moodDisplay.text} Meeting</span>
@@ -435,22 +480,15 @@ const SummarisedMeeting = () => {
                   onChange={(e) => setFollowUpDate(e.target.value)}
                   className="bg-gray-700 border border-gray-600 rounded-md p-2 flex-grow text-gray-200 focus:ring-blue-500 focus:border-blue-500"
                   min={new Date().toISOString().slice(0, 16)}
-                  disabled={isUsingBackupData}
                 />
                 <button
                   onClick={scheduleFollowUp}
-                  disabled={!followUpDate || isUsingBackupData}
-                  className={`px-5 py-2.5 rounded-md text-white shadow-md ${followUpDate && !isUsingBackupData ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 transition-all duration-300' : 'bg-gray-600 cursor-not-allowed'}`}
+                  disabled={!followUpDate}
+                  className={`px-5 py-2.5 rounded-md text-white shadow-md ${followUpDate ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 transition-all duration-300' : 'bg-gray-600 cursor-not-allowed'}`}
                 >
                   Schedule Follow-up
                 </button>
               </div>
-              {isUsingBackupData && (
-                <p className="text-yellow-400 text-sm mt-2">
-                  <i className="fas fa-exclamation-triangle mr-1"></i>
-                  Scheduling is disabled while using cached data
-                </p>
-              )}
             </div>
           )}
 
@@ -486,7 +524,6 @@ const SummarisedMeeting = () => {
                               className="h-5 w-5 rounded cursor-pointer bg-gray-700 border-gray-500 text-indigo-500 focus:ring-indigo-600 focus:ring-offset-gray-900"
                               checked={item.completed || false}
                               onChange={() => toggleTaskCompletion(index)}
-                              disabled={isUsingBackupData}
                             />
                           </div>
                           <div className="ml-3 w-full">
@@ -551,23 +588,16 @@ const SummarisedMeeting = () => {
                       value={quickNote}
                       onChange={(e) => setQuickNote(e.target.value)}
                       className="bg-gray-700 border border-gray-600 rounded-md p-2.5 flex-grow text-gray-200 focus:ring-blue-500 focus:border-blue-500 placeholder-gray-400"
-                      disabled={isUsingBackupData}
                       onKeyPress={(e) => e.key === 'Enter' && handleSaveQuickNote()}
                     />
                     <button
                       onClick={handleSaveQuickNote}
-                      disabled={!quickNote.trim() || isUsingBackupData}
-                      className={`px-4 py-2.5 rounded-md text-white shadow-md ${quickNote.trim() && !isUsingBackupData ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 transition-all duration-300' : 'bg-gray-600 cursor-not-allowed'}`}
+                      disabled={!quickNote.trim()}
+                      className={`px-4 py-2.5 rounded-md text-white shadow-md ${quickNote.trim() ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 transition-all duration-300' : 'bg-gray-600 cursor-not-allowed'}`}
                     >
                       <i className="fas fa-plus"></i>
                     </button>
                   </div>
-                  {isUsingBackupData && (
-                    <p className="text-yellow-400 text-sm mt-2">
-                      <i className="fas fa-exclamation-triangle mr-1"></i>
-                      Note taking is disabled while using cached data
-                    </p>
-                  )}
                 </div>
                 
                 {quickNotes.length > 0 ? (
@@ -579,7 +609,6 @@ const SummarisedMeeting = () => {
                           <button 
                             onClick={() => handleDeleteNote(note.id)}
                             className="text-gray-500 hover:text-red-400 transition-colors duration-300 opacity-0 group-hover:opacity-100"
-                            disabled={isUsingBackupData}
                           >
                             <i className="fas fa-trash-alt"></i>
                           </button>
