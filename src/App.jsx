@@ -1,4 +1,4 @@
-import React, { useState, useCallback, Suspense } from 'react';
+import React, { useState, useCallback, Suspense, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import './App.css';
@@ -17,6 +17,9 @@ import Chat from './pages/Chat/Chat';
 // Hooks
 import { useTranscription } from './hooks/useTranscription';
 import { exportJSON, exportPDF } from './utils/exportUtils';
+// Google API integration
+import { useGoogleAuth } from './hooks/useGoogleAuth';
+import { useGoogleCalendar } from './hooks/useGoogleCalendar';
 
 function App() {
   console.log("App component rendering");
@@ -26,6 +29,29 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const { currentUser, logout } = useAuth() || {};
+
+  // Google integration hooks
+  const { 
+    isGoogleAuthenticated, 
+    googleUser, 
+    loginWithGoogle, 
+    logoutFromGoogle 
+  } = useGoogleAuth();
+  
+  const { 
+    upcomingMeetings, 
+    currentMeeting, 
+    isLoading: isLoadingMeetings,
+    fetchMeetings, 
+    joinMeeting 
+  } = useGoogleCalendar(isGoogleAuthenticated);
+
+  // Fetch meetings when user is authenticated with Google
+  useEffect(() => {
+    if (isGoogleAuthenticated) {
+      fetchMeetings();
+    }
+  }, [isGoogleAuthenticated, fetchMeetings]);
 
   // Get API key from environment variables
   const DEEPGRAM_API_KEY = import.meta.env.VITE_DEEPGRAM_API_KEY;
@@ -92,25 +118,30 @@ function App() {
   const renderAuthScreen = () => { 
     if (authView === 'login') {
       return (
-        <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center p-4">
           <LoginScreen 
             onToggleAuth={() => setAuthView('signup')} 
             onLoginSuccess={() => {
               console.log("Login success callback triggered");
               setAuthView(null);
+              // Redirect to Home page
+              window.location.href = '/home';
             }} 
           />
         </div>
+        
       );
     }
     if (authView === 'signup') {
       return (
-        <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center p-4">
           <SignupScreen 
             onToggleAuth={() => setAuthView('login')} 
             onSignupSuccess={() => {
               console.log("Signup success callback triggered");
-              setAuthView('login');
+              setAuthView(null);
+              // Redirect to Home page after signup
+              window.location.href = '/home';
             }} 
           />
         </div>
@@ -152,6 +183,13 @@ function App() {
             deepgramAnalysis={deepgramAnalysis}
             isAnalyzing={isAnalyzing}
             setAuthView={setAuthView}
+            // Google integration props
+            isGoogleAuthenticated={isGoogleAuthenticated}
+            loginWithGoogle={loginWithGoogle}
+            upcomingMeetings={upcomingMeetings}
+            currentMeeting={currentMeeting}
+            joinMeeting={joinMeeting}
+            isLoadingMeetings={isLoadingMeetings}
           />
         } />
         <Route path="/home" element={<Home />} />

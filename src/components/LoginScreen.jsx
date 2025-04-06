@@ -11,83 +11,141 @@ const LoginScreen = ({ onToggleAuth, onLoginSuccess }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    
+    if (!email.trim() || !password.trim()) {
+      return setError('Please enter both email and password');
+    }
+    
     setLoading(true);
     
     try {
-      console.log("Attempting login with:", email);
+      console.log("Attempting login for:", email);
       await login(email, password);
       console.log("Login successful, calling onLoginSuccess callback");
       onLoginSuccess?.();
     } catch (err) {
       console.error("Login error in component:", err);
-      setError(
-        err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' 
-          ? 'Invalid email or password' 
-          : err.code === 'auth/too-many-requests'
-          ? 'Too many failed login attempts. Please try again later.'
-          : 'Failed to log in. Please check your credentials and try again.'
-      );
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+        setError('Invalid email or password');
+      } else if (err.code === 'auth/invalid-email') {
+        setError('Invalid email format');
+      } else {
+        setError('Failed to log in. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="w-full max-w-md mx-auto bg-white rounded-lg shadow-md p-8">
-      <h2 className="text-2xl font-bold text-center mb-6 text-blue-600">Log In</h2>
+    <div className="w-full max-w-md mx-auto bg-slate-900/90 backdrop-blur-md rounded-xl shadow-2xl p-8 border border-slate-700/50 animate-fadeIn">
+      <div className="flex justify-center mb-6">
+        <div className="w-16 h-16 bg-gradient-to-r from-blue-600 via-teal-500 to-slate-500 rounded-full flex items-center justify-center shadow-lg">
+          <i className="fas fa-user text-white text-2xl"></i>
+        </div>
+      </div>
       
-      {error && <div className="bg-red-100 text-red-700 p-3 rounded mb-4">{error}</div>}
+      <h2 className="text-3xl font-bold text-center mb-8 text-white">Welcome Back</h2>
       
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-            Email
+      {error && (
+        <div className="bg-red-900/30 text-red-200 p-4 rounded-lg mb-6 border border-red-800/30 flex items-center">
+          <i className="fas fa-exclamation-circle mr-2 text-red-400"></i>
+          <span>{error}</span>
+        </div>
+      )}
+      
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="group">
+          <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-2">
+            Email Address
           </label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            required
-            disabled={loading}
-          />
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <i className="fas fa-envelope text-slate-400"></i>
+            </div>
+            <input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full pl-10 px-4 py-3 bg-slate-800/80 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-white placeholder-slate-400 transition-all duration-300"
+              placeholder="your@email.com"
+              required
+              disabled={loading}
+            />
+          </div>
         </div>
         
-        <div>
-          <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+        <div className="group">
+          <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-2">
             Password
           </label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            required
-            disabled={loading}
-          />
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <i className="fas fa-lock text-slate-400"></i>
+            </div>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full pl-10 px-4 py-3 bg-slate-800/80 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-white placeholder-slate-400 transition-all duration-300"
+              placeholder="••••••••"
+              required
+              disabled={loading}
+            />
+          </div>
+        </div>
+        
+        <div className="flex items-center justify-between">
+          <div className="flex items-center">
+            <input
+              id="remember-me"
+              name="remember-me"
+              type="checkbox"
+              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-slate-600 rounded bg-slate-800"
+            />
+            <label htmlFor="remember-me" className="ml-2 block text-sm text-slate-300">
+              Remember me
+            </label>
+          </div>
+          
+          <div className="text-sm">
+            <a href="#" className="font-medium text-blue-400 hover:text-blue-300 transition-colors">
+              Forgot password?
+            </a>
+          </div>
         </div>
         
         <button
           type="submit"
           disabled={loading}
-          className={`w-full py-2 px-4 rounded-md text-white font-medium ${
-            loading ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700'
+          className={`w-full py-3 px-4 rounded-lg text-white font-medium transition-all duration-300 ${
+            loading 
+              ? 'bg-blue-700/50 cursor-not-allowed' 
+              : 'bg-blue-600 hover:bg-blue-700 shadow-lg hover:shadow-blue-700/20'
           }`}
         >
-          {loading ? 'Logging in...' : 'Log In'}
+          {loading ? (
+            <span className="flex items-center justify-center">
+              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Signing in...
+            </span>
+          ) : 'Sign In'}
         </button>
       </form>
       
-      <div className="text-center mt-4">
-        <p className="text-sm text-gray-600">
+      <div className="mt-8 text-center">
+        <p className="text-sm text-slate-300">
           Don't have an account?{' '}
           <button
             onClick={() => onToggleAuth('signup')}
-            className="text-blue-600 hover:text-blue-800 font-medium"
+            className="text-blue-400 hover:text-blue-300 font-medium transition-colors"
           >
-            Sign up
+            Create account
           </button>
         </p>
       </div>
