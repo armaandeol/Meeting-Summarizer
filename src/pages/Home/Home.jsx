@@ -72,7 +72,7 @@ const Home = () => {
         const userMeetingsRef = collection(db, "users", currentUser.uid, "meetings");
         const docRef = await addDoc(userMeetingsRef, meetingData);
         console.log("Meeting created with ID: ", docRef.id);
-        navigate(`/meeting/${docRef.id}`);
+        navigate(`/transcription/${docRef.id}`);
       } else {
         alert("You must be logged in to create a meeting");
       }
@@ -164,7 +164,10 @@ const Home = () => {
               <i className="fas fa-calendar-alt mr-3"></i>
               <span>Meetings</span>
             </a>
-            <a href="#" className="flex items-center px-6 py-4 my-1 rounded-lg text-blue-100 hover:bg-blue-800/50 transition-all duration-300">
+            <a 
+              onClick={() => navigate('/summaries')} 
+              className="flex items-center px-6 py-4 my-1 rounded-lg text-blue-100 hover:bg-blue-800/50 transition-all duration-300 cursor-pointer"
+            >
               <i className="fas fa-file-alt mr-3"></i>
               <span>Summaries</span>
             </a>
@@ -358,11 +361,11 @@ const Home = () => {
                         </div>
                       </div>
                       <a 
-                        href={`/summarised-meeting/${meeting.id}`} 
+                        href={`/summaries/${meeting.id}`} 
                         className="text-blue-400 text-sm hover:text-blue-300 font-medium"
                         onClick={(e) => {
                           e.preventDefault();
-                          navigate(`/summarised-meeting/${meeting.id}`);
+                          navigate(`/summaries/${meeting.id}`);
                         }}
                       >
                         View Summary

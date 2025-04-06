@@ -40,7 +40,8 @@ const MainAppContent = ({
   upcomingMeetings,
   currentMeeting,
   joinMeeting,
-  isLoadingMeetings
+  isLoadingMeetings,
+  meetingCount
 }) => (
   <div className="min-h-screen bg-gray-900 flex flex-col bg-[url('/texture-dark.png')] bg-repeat">
     <nav className="bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 shadow-lg sticky top-0 z-20 border-b border-blue-500/30">
@@ -86,7 +87,20 @@ const MainAppContent = ({
                   type="text"
                   placeholder="Meeting Title"
                   value={meetingTitle}
-                  onChange={(e) => setMeetingTitle(e.target.value)}
+                  onChange={(e) => {
+                    const newTitle = e.target.value;
+                    setMeetingTitle(newTitle);
+                    if (!newTitle.trim() && transcriptEntries.length > 0) {
+                      const meetingNumber = meetingCount ? meetingCount + 1 : 1;
+                      setMeetingTitle(`Meeting ${meetingNumber}`);
+                    }
+                  }}
+                  onBlur={() => {
+                    if (!meetingTitle.trim()) {
+                      const meetingNumber = meetingCount ? meetingCount + 1 : 1;
+                      setMeetingTitle(`Meeting ${meetingNumber}`);
+                    }
+                  }}
                   className="text-2xl font-semibold text-white bg-transparent border-b border-blue-500/40 focus:border-blue-500 outline-none mb-2 pb-1"
                 />
                 <div className="flex justify-between items-center">
